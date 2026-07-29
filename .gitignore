@@ -1,0 +1,56 @@
+# Secrets
+.env
+.env.local
+
+# Generated run data: JSONL traces, manifests, judge outputs.
+# The directory is tracked so a fresh clone has somewhere to write; contents are not.
+runs/*
+!runs/.gitkeep
+
+# The exception: the retrieval calibration is the evidence behind a pre-registered constant
+# (`lookup_kb.GROUNDING_MIN_SCORE`), not the output of a graded run. A constant whose docstring
+# cites a file nobody else has is an unsupported claim, so this one is tracked.
+!runs/retrieval_calibration.json
+
+# Runs retired from runs/: manifests in a format `RunManifest.from_dict` no longer loads, kept
+# for reference. Outside runs/ because the browser walks that tree recursively.
+archive/
+
+# Caches: web search cache, model response cache, embedding cache
+.cache/
+*.npy
+*.npz
+
+# Derived retrieval index. Rebuilt by `agentseval-index`; the corpus it describes is
+# tracked, the embeddings are not, since they are model- and version-specific. Globbed rather
+# than named per directory so a fixture corpus does not have to remember to add a line.
+**/.index.json
+
+# Composed fixture corpora: kb/ plus a fixture's documents, rebuilt by
+# `agentseval-compose-fixture`. Derived on purpose — a checked-in copy of kb/ would drift from
+# the original, which is the failure the composition step exists to prevent.
+evals/fixtures/.composed/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# Tooling
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Models downloaded by sentence-transformers
+.hf_cache/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

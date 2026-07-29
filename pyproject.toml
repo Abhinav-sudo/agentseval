@@ -1,0 +1,86 @@
+[project]
+name = "agentseval"
+version = "0.1.0"
+description = "Evaluation platform for LLM agents: uniform-harness A/B of a frontier and an OSS agent, with a third-family LLM judge."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+
+dependencies = [
+    # All three providers are reached over plain HTTP rather than their SDKs, so that one
+    # retry policy, one cache, and one request path serve every model (see PROJECT.md).
+    "httpx>=0.27",
+    # Retrieval: all-MiniLM-L6-v2 + cosine similarity over a numpy array.
+    # No FAISS/Chroma by design (see PROJECT.md).
+    "sentence-transformers>=3.3",
+    "numpy>=1.26",
+    # Config, KB parsing, CLI/report output.
+    "python-dotenv>=1.0",
+    "pydantic>=2.9",
+    "rich>=13.9",
+    "typer>=0.15",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-cov>=6.0",
+    "ruff>=0.8",
+    "mypy>=1.13",
+]
+app = [
+    # The floor is the version the pages are developed against, because they use recent widget
+    # surface rather than only the stable core: `width="stretch"`, bordered columns and metrics,
+    # `st.badge`, and the theme keys in `.streamlit/config.toml` (borderColor, baseRadius,
+    # `[theme.sidebar]`). An older Streamlit does not fail loudly on all of those — it ignores the
+    # config keys and raises on the keywords — so the floor says what was actually tested.
+    "streamlit>=1.60",
+]
+
+[project.scripts]
+agentseval-run = "evals.runner:main"
+agentseval-judge = "evals.judge:main"
+agentseval-report = "evals.report:main"
+agentseval-index = "agent.tools.lookup_kb:main"
+agentseval-validate-dataset = "evals.validate_dataset:main"
+agentseval-validate-judge = "evals.validate_judge:main"
+agentseval-label = "evals.label:main"
+agentseval-compose-fixture = "evals.fixtures.compose:main"
+agentseval-calibrate-retrieval = "evals.calibrate_retrieval:main"
+agentseval-compare = "evals.report:compare_main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+# Whole packages, which is what carries agent/rubrics/*.md and *.anchors.json into the wheel:
+# the judge loads them through importlib.resources, so an installed agentseval-judge with no
+# rubrics would fail at the moment of scoring. tests/test_judge.py asserts they are present.
+# Narrowing this to only-include or a source pattern would drop them silently.
+#
+# `ui` is here so that `from ui.data import ...` resolves in an installed copy and not only in a
+# source checkout, where the editable install puts the repo root on the path and hides the
+# omission. `ui/pages/*.py` are scripts Streamlit runs rather than modules anything imports, and
+# they ship for the same reason the rubrics do: an installed dashboard with no pages is a
+# navigation bar with nothing in it.
+packages = ["agent", "evals", "ui"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+markers = [
+    "slow: needs a real embedding model download; opt in with AGENTSEVAL_TEST_REAL_EMBEDDINGS=1",
+]
+
+[tool.mypy]
+python_version = "3.11"
+warn_unused_ignores = true
+ignore_missing_imports = true

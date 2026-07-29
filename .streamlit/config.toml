@@ -1,0 +1,41 @@
+# Streamlit settings, read by both entry scripts: `streamlit run app.py` and
+# `streamlit run ui/dashboard.py`.
+
+# Pinned rather than left to the viewer's OS preference. Without this block the same page is dark
+# on one machine and light on another, so a screenshot in README.md is a screenshot of whoever took
+# it; and the figures on these pages are meant to be quotable, which starts with them looking the
+# same to two people reading the same run.
+#
+# Font families are stacks so that a machine without Inter or JetBrains Mono falls back to its own
+# sans and mono rather than to a family it also does not have.
+[theme]
+base = "dark"
+primaryColor = "#5EEAD4"
+backgroundColor = "#0E1117"
+secondaryBackgroundColor = "#161B22"
+textColor = "#E6EDF3"
+borderColor = "#2A313C"
+# Widget borders and a shared radius: the sidebar controls are otherwise unanchored boxes floating
+# on the background, which is most of what reads as an unstyled app.
+showWidgetBorder = true
+baseRadius = "medium"
+font = "Inter, sans-serif"
+headingFont = "Inter, sans-serif"
+codeFont = "JetBrains Mono, monospace"
+
+[theme.sidebar]
+# A shade behind the main pane, so the run controls read as chrome rather than as content.
+backgroundColor = "#0B0E13"
+borderColor = "#222831"
+
+[server]
+# Disables the auto-reload watcher, which is the only way to stop it walking `sys.modules` and
+# reading `__path__` off every loaded module. `transformers` — pulled in by sentence-transformers
+# for the retrieval embeddings — is a lazy module whose `__path__` access imports the matching
+# submodule, and its vision image processors import `torchvision`, which this project does not
+# depend on. Streamlit catches each ImportError and logs a traceback, several hundred of them,
+# none of which mean anything is wrong.
+#
+# The cost is that saving a file no longer reruns the app; use the browser's rerun. Delete this
+# to trade the noise back for auto-reload, or install `torchvision` to satisfy the imports.
+fileWatcherType = "none"
