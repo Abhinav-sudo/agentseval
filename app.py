@@ -10,17 +10,31 @@ the evals measure.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any, Literal, cast
 
 import streamlit as st
 
 from agent.manifest import AgentConfig
-from agent.models.base import ModelError, load_agent_model, load_env
+from agent.models.base import ConfigError, ModelError, load_agent_model, load_env
+from agent.models.frontier import resolved_frontier_model
+from agent.models.oss import resolved_oss_model
 from agent.session import ChatSession, ConversationRef, resumable_conversations, turn_detail
 
 Arm = Literal["frontier", "oss"]
 
-ARMS: dict[Arm, str] = {"frontier": "Frontier (Claude)", "oss": "OSS (Llama 3.1 8B)"}
+#: The role each arm plays. Deliberately no model id: which model serves an arm is configuration
+#: (`FRONTIER_PROVIDER`, `FRONTIER_MODEL`, `OSS_MODEL`), and a hardcoded id here is a caption that
+#: goes on being drawn after the configuration moves — this page announced "Frontier (Claude)" over
+#: a Gemini run for exactly that reason. The id is resolved per render below.
+ARM_ROLES: dict[Arm, str] = {"frontier": "Frontier", "oss": "OSS"}
+
+#: Where each arm's model id comes from. The same expressions the adapters resolve their own
+#: `model_id` with, so the label and the request cannot disagree.
+RESOLVERS: dict[Arm, Callable[[], tuple[str, str]]] = {
+    "frontier": resolved_frontier_model,
+    "oss": resolved_oss_model,
+}
 
 #: One avatar per arm, carried on each assistant message. A conversation can cross a model switch,
 #: and the marker below only says where that happened: without a per-bubble mark, scroll-back leaves
@@ -53,10 +67,35 @@ RESUME_KEY = "resume_choice"
 def config_for(which: str) -> AgentConfig:
     """Build the config for one arm; everything else about the run is shared by construction.
 
-    `which` comes from `ARMS`, and `load_agent_model` rejects anything else, so the cast cannot
-    hide a bad value.
+    `which` comes from `ARM_ROLES`, and `load_agent_model` rejects anything else, so the cast
+    cannot hide a bad value.
     """
     return AgentConfig(model=load_agent_model(cast(Arm, which)))
+
+
+def arm_label(arm: Arm) -> str:
+    """Label `arm` with the model id the environment says will serve it.
+
+    Read from the environment rather than off an adapter, because the selector is drawn before any
+    session exists and building an adapter to read `model_id` would demand a credential to draw a
+    label. A misconfigured provider degrades to the bare role name: the same resolution runs again
+    a few lines below, where the failure is caught and shown as a sentence naming the variable, and
+    a label that raised would pre-empt that with a traceback from the sidebar.
+    """
+    try:
+        return f"{ARM_ROLES[arm]} ({RESOLVERS[arm]()[1]})"
+    except ConfigError:
+        return ARM_ROLES[arm]
+
+
+def live_label(arm: Arm, session: ChatSession) -> str:
+    """Label `arm` with the model the session is actually holding for it.
+
+    For anything drawn after the session has been built or rotated, which is where it beats
+    `arm_label`: this reports the adapter that will answer, so a `.env` edited while the page was
+    open cannot move the caption off the model the next turn is sent to.
+    """
+    return f"{ARM_ROLES[arm]} ({session.config.model.model_id})"
 
 
 def render_detail(detail: dict[str, Any]) -> None:
@@ -114,7 +153,7 @@ def render_detail(detail: dict[str, Any]) -> None:
     if detail["format_violation"]:
         st.warning(f"Protocol violation: `{detail['format_violation']}`.")
     if detail["budget_induced_truncations"]:
-        # Our token ceiling cut the reply off, which is a fact about the harness (README.md).
+        # Our token ceiling cut the reply off, which is a fact about the harness (PROJECT.md).
         st.warning(f"{detail['budget_induced_truncations']} response(s) cut off at max_tokens.")
     if detail["infrastructure_failed"]:
         st.error("A tool failed on our side; an eval would exclude this item from scoring.")
@@ -260,8 +299,8 @@ def main() -> None:
         st.header("Run")
         arm = st.radio(
             "Model",
-            list(ARMS),
-            format_func=lambda key: ARMS[key],
+            list(ARM_ROLES),
+            format_func=arm_label,
             help="Both arms share one harness: same prompt, tools, budgets, and JSON protocol.",
         )
         reset = st.button("Reset conversation")
@@ -288,8 +327,8 @@ def main() -> None:
                         "kind": MARKER,
                         "role": "system",
                         "content": (
-                            f"Switched to {ARMS[arm]}. Everything above is carried over; the next "
-                            "message opens a new run."
+                            f"Switched to {live_label(arm, session)}. Everything above is carried "
+                            "over; the next message opens a new run."
                         ),
                     }
                 )
@@ -309,7 +348,7 @@ def main() -> None:
     # The live arm, in the main pane rather than only in the sidebar radio, so a screenshot of the
     # transcript says which model produced it. The arm and not the run: the run is minted by the
     # turn below, and a badge drawn here could only report the previous one.
-    st.badge(ARMS[arm], icon=AVATARS[arm], color="violet")
+    st.badge(live_label(arm, session), icon=AVATARS[arm], color="violet")
 
     # Pinned to the bottom of the page wherever it is called from, so it can be read before the
     # transcript is drawn — which is what lets the panel below know whether a question is coming.

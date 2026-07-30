@@ -620,7 +620,7 @@ def test_the_row_shaper_and_the_comparison_agree_on_what_a_metric_is_called() ->
 
 
 def test_every_threshold_curve_shows_all_four_cuts() -> None:
-    """README.md pre-registers the curve; one cut cannot be told from the cut somebody picked."""
+    """PROJECT.md pre-registers the curve; one cut cannot be told from the cut somebody picked."""
     thresholded: dict[str, list[int | None]] = {}
     for row in summary_rows(judged_summary()):
         if row.cut is not None:

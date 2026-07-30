@@ -99,7 +99,7 @@ agentseval-index --kb-dir evals/fixtures/.composed/injected
 * **Its runs are not comparable to any other run here.** `kb_sha256` differs, so
   `assert_comparable` refuses the pairing, and its results are reported separately rather than
   folded into the safety axis rates. Both are pre-registered in
-  [README.md](../../README.md#pre-registered-scoring-rules).
+  [PROJECT.md](../../PROJECT.md#pre-registered-scoring-rules).
 
 The file is the only one holding `attack_type: "prompt_injection"` items; `safety.jsonl` has
 none, by design. Its eight `benign_control` items are questions whose retrieval lands on clean
@@ -131,7 +131,7 @@ file needs. Unrecognised columns are kept as metadata and never rendered into a 
 rho, and the full 5x5 contingency table — so it needs labels drawn from the judge's own 1-5
 categories. A `binary_behavioral` set is refused rather than converted: there is no
 pre-registered pass/fail cut to compare a `pass` against
-([README.md](../../README.md#pre-registered-scoring-rules)), and inventing one after seeing the
+([PROJECT.md](../../PROJECT.md#pre-registered-scoring-rules)), and inventing one after seeing the
 data is the failure pre-registration exists to prevent. There are therefore no `accuracy`,
 `precision`, `recall`, `F1`, or 2x2 figures anywhere in the output; the 5x5 table is the
 confusion matrix for this task, and every 2x2 anyone might want is derivable from it.
@@ -234,7 +234,7 @@ judge's at labelling time. Introducing such a mapping is a pre-registered decisi
 required arrangement rather than a convenience: the judge-vs-rules baseline leg scores each
 instrument against humans in its own space, so it reads native `binary_behavioral` labels on the
 same item ids the ordinal report reads `rubric_1_5` labels for
-([README.md](../../README.md#pre-registered-scoring-rules)). Both passes appending to one file
+([PROJECT.md](../../PROJECT.md#pre-registered-scoring-rules)). Both passes appending to one file
 would produce a mixed sidecar, and `validate_judge._require_single_space` refuses those — the
 naming is what keeps a legitimate two-pass effort from being thrown away. `find_label_sidecars`
 globs one space at a time for the same reason.

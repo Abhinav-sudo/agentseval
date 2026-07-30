@@ -24,7 +24,7 @@ not by showing the judge both responses at once. Every check here has to be defi
 terms, which is what rules out an A/B-versus-B/A position-bias flip rate and what makes block
 order the ordering a single-response judge can actually be sensitive to.
 
-**Agreement is ordinal** (README.md, pre-registered). Humans label on the same 1-5 scale, so
+**Agreement is ordinal** (PROJECT.md, pre-registered). Humans label on the same 1-5 scale, so
 `AgreementReport.cohens_kappa` is quadratic-weighted and `spearman_rho` runs on the raw scores.
 Collapsing either side to pass/fail to get an unweighted kappa is forbidden: it treats a 4-vs-5
 disagreement as identical to a 1-vs-5 one and buries an unjustified cut inside the headline
@@ -41,7 +41,7 @@ the run was invoked.
 **The one binarisation is the baseline leg's, and it is a citation.** `baseline_comparison` reads
 the judge's score through `prompts.JUDGE_SCORE_BANDS` — text fixed before any graded run and
 already load-bearing on every rubric anchor — to set the ordinal judge against natively binary
-rules and natively binary human labels (README.md, "The one registered binarisation"). It is a
+rules and natively binary human labels (PROJECT.md, "The one registered binarisation"). It is a
 separate artifact section, it adds no binary statistic to the agreement figures, and the human
 side is never binarised: those labels are collected in the binary space to begin with. Items the
 judge scored 3 leave that leg and are counted, because `adequate` is its own band rather than a
@@ -133,14 +133,14 @@ REPORT_VERSION = 1
 
 #: Where the rules governing this module are written down. Printed and recorded rather than
 #: cited in a comment, so a number and the rule it was produced under travel together.
-RULES_ANCHOR = "README.md#pre-registered-scoring-rules"
+RULES_ANCHOR = "PROJECT.md#pre-registered-scoring-rules"
 
 #: Minimum pairs before a per-axis kappa is reported at all. Below this the figure is a
 #: restatement of two or three items and its interval spans most of the range; suppressing it
 #: with a recorded reason is more informative than printing it with a caveat nobody reads.
 MIN_KAPPA_N = 10
 
-#: The pre-registered agreement gate (README.md). One statistic and one sample size, chosen
+#: The pre-registered agreement gate (PROJECT.md). One statistic and one sample size, chosen
 #: before any graded run: quadratic-weighted kappa at or above 0.60 — Landis and Koch's
 #: "substantial" — over at least 20 pairs. There is deliberately no flag to lower either, since
 #: a gate an operator can move is documentation rather than a gate.
@@ -274,7 +274,7 @@ class AgreementReport:
         cohens_kappa: **Quadratic-weighted**, on the 1-`JUDGE_SCALE_MAX` categories both sides
             label in. Unweighted kappa on an ordinal scale throws the ordering away, and kappa
             after collapsing to pass/fail is a function of the cut rather than of the judge
-            (README.md). `None` when it is not defined for this data — see
+            (PROJECT.md). `None` when it is not defined for this data — see
             `kappa_unavailable_reason`, which is always set when this is `None`.
         spearman_rho: On the raw scores, for the same reason. `None` when either rater is
             constant, since a correlation is undefined without variance on both sides.
@@ -408,7 +408,7 @@ def _identity_weights(first: int, second: int, categories: int) -> float:
     Present so that "unweighted kappa throws the ordering away" is a claim
     `tests/test_validate_judge.py` can demonstrate on real data rather than a sentence in a
     docstring. **Nothing reports it.** `measure_agreement` fills
-    `AgreementReport.cohens_kappa` from `_quadratic_weights` only, and README.md pre-registers
+    `AgreementReport.cohens_kappa` from `_quadratic_weights` only, and PROJECT.md pre-registers
     that as the agreement statistic.
     """
     return 0.0 if first == second else 1.0
@@ -722,7 +722,7 @@ def agreement_by_axis(
     Every axis gets a row whether or not it was labelled. A labelled set with no bias items is a
     fact about the labelling effort — most likely that the bias axis is being measured by a
     within-pair delta and nobody scored it on the rubric — and a dropped row is
-    indistinguishable from a vocabulary that never had the value (README.md).
+    indistinguishable from a vocabulary that never had the value (PROJECT.md).
     """
     buckets: dict[str, list[LabelledPair]] = {axis.value: [] for axis in Axis}
     buckets[NO_AXIS] = []
@@ -1124,7 +1124,7 @@ def _require_binary_space(records: Sequence[LabelRecord]) -> LabelSpace:
     The baseline leg's requirement, and the mirror image of `_require_single_space`. The binary
     leg scores natively-binary rules against natively-binary human labels; handed 1-5 labels it
     would need a cut over the *human* side, which is the one binarisation the pre-registered rules
-    refuse outright (README.md). So it refuses rather than converting.
+    refuse outright (PROJECT.md). So it refuses rather than converting.
     """
     space = _single_space(records)
     if space is not LabelSpace.BINARY_BEHAVIORAL:
@@ -1358,7 +1358,7 @@ def load_binary_labels_from_run(
 
     The human side of the judge-vs-rules baseline leg, and the reason it can exist without
     binarising anybody's 1-5 labels: these are collected in the binary space to begin with
-    (README.md). The labels live in their own sidecar — `label.labels_path` puts the space in the
+    (PROJECT.md). The labels live in their own sidecar — `label.labels_path` puts the space in the
     filename — so this reads a different file from the ordinal report and neither loader tolerates
     the other's space.
 
@@ -1830,7 +1830,7 @@ def check_stability(
 BANDS_CITATION = "agent/prompts.py:JUDGE_SCORE_BANDS"
 
 #: The band whose items leave the binary leg. `adequate` is its own band in `JUDGE_SCORE_BANDS`,
-#: not a tie to be broken, so an item the judge scored 3 is dropped and counted (README.md). The
+#: not a tie to be broken, so an item the judge scored 3 is dropped and counted (PROJECT.md). The
 #: two verdict bands are named rather than re-derived so a band rename fails loudly here.
 BAND_FAIL = "fail"
 BAND_ADEQUATE = "adequate"
@@ -1851,7 +1851,7 @@ class BaselineRow:
     """One pre-registered row of the baseline table: one binary question, one rule, one reading.
 
     Attributes:
-        key: The row's stable wire key, matching the row registered in README.md.
+        key: The row's stable wire key, matching the row registered in PROJECT.md.
         question: The binary question this row asks, in words. Both instruments answer this one
             question about the same items, and the human `binary_behavioral` label is the target
             for every row — which is what makes the two answers comparable without either
@@ -1872,12 +1872,12 @@ class BaselineRow:
 
 
 #: The registered coverage: one binary question per row, each naming the rule that answers it and
-#: the judge reading it is set against (README.md, "Coverage is pre-registered, one question per
+#: the judge reading it is set against (PROJECT.md, "Coverage is pre-registered, one question per
 #: row"). Read rather than inferred — iterating whatever checks happened to run would make the
 #: table a function of which dataset fields were populated, and would compare rules against human
 #: labels on rows nobody registered.
 #:
-#: Rows are added by registering them in README.md first. A test pins this tuple to the table
+#: Rows are added by registering them in PROJECT.md first. A test pins this tuple to the table
 #: there, so the two cannot drift apart.
 BASELINE_COVERAGE: tuple[BaselineRow, ...] = (
     BaselineRow(
@@ -2207,7 +2207,7 @@ def baseline_comparison(
 ) -> dict[str, Any]:
     """Compare the judge against the deterministic rules, each against humans in its own space.
 
-    The one registered binarisation in the platform (README.md). Every condition the leg was
+    The one registered binarisation in the platform (PROJECT.md). Every condition the leg was
     specified under, kept:
 
     * **each instrument is scored against humans in its own space.** The rules are natively binary
@@ -2288,7 +2288,7 @@ def evaluate_gate(overall: AgreementReport) -> dict[str, Any]:
     """Decide whether this judge may be used, against the pre-registered gate.
 
     Quadratic-weighted kappa at or above `AGREEMENT_GATE_KAPPA` over at least
-    `AGREEMENT_GATE_MIN_N` pairs (README.md). One statistic and one sample size, fixed before any
+    `AGREEMENT_GATE_MIN_N` pairs (PROJECT.md). One statistic and one sample size, fixed before any
     graded run, with no flag to lower either: a gate an operator can move on the day is
     documentation rather than a gate, and the whole point is that an unvalidated judge cannot
     quietly be used.
@@ -2415,7 +2415,7 @@ class ValidationReport:
 
         `threshold` stays null on the ordinal report whatever the baseline leg did: the cut the
         baseline leg cites applies to that leg's own section and adds no binary statistic to the
-        agreement figures above it (README.md). `rules_version` is lifted from the baseline
+        agreement figures above it (PROJECT.md). `rules_version` is lifted from the baseline
         section, so it is a digest exactly when rules ran; when it is null, that section's `status`
         and `reasons` say why.
         """
@@ -2558,7 +2558,7 @@ def _per_axis_table(by_axis: Mapping[str, AgreementReport]) -> Table:
 
     Every axis in the closed `Axis` vocabulary appears whether or not it was labelled. A
     labelled set with no bias items is a fact about the labelling effort, and a dropped row is
-    indistinguishable from a vocabulary that never had the value (README.md).
+    indistinguishable from a vocabulary that never had the value (PROJECT.md).
 
     Cells stay short, and anything that needs a sentence goes in the footnotes underneath. The
     table is kept narrow enough to render whole in an 80-column terminal, because the alternative

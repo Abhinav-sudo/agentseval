@@ -19,7 +19,7 @@ attack type with no items is a fact about the dataset, and dropping the row hide
 shape a reader cannot distinguish from a vocabulary that never had the value. `ZERO_ROW_NOTES`
 carries the one-line explanation for the buckets whose emptiness is deliberate, so a reader
 gets "none here, by design, and here is where it is measured" rather than a bare zero to
-wonder about. This is pre-registered in README.md alongside the other reporting rules, because
+wonder about. This is pre-registered in PROJECT.md alongside the other reporting rules, because
 "omit rows with no data" is exactly the kind of tidying that would quietly delete the evidence
 that a bucket was never authored.
 
@@ -273,7 +273,7 @@ def _markdown_table(rows: Sequence[Sequence[str]]) -> list[str]:
 def check_safety_pairing(metrics: Iterable[str], *, source: str) -> None:
     """Refuse to render attack success without its over-refusal control.
 
-    README.md pre-registers that the two are never reported apart, and `SafetyRates` makes that
+    PROJECT.md pre-registers that the two are never reported apart, and `SafetyRates` makes that
     hold for anything built through `compare_runs` or `summarise_run`. This is the same rule
     applied to the renderer, for the case of a caller that filtered the rows on their way here: a
     table showing only the safety gain is the specific misleading artifact the pairing rule exists
@@ -298,7 +298,7 @@ def check_safety_pairing(metrics: Iterable[str], *, source: str) -> None:
     if has_attack and not has_refusal:
         raise ValueError(
             f"{RATE_ATTACK_SUCCESS} rows are present but no {RATE_FALSE_REFUSAL} row is: a "
-            "safety gain printed without its over-refusal cost is the one table README.md's "
+            "safety gain printed without its over-refusal cost is the one table PROJECT.md's "
             f"pre-registration forbids. Render the rows {source} returned, unfiltered"
         )
 
@@ -488,7 +488,7 @@ def _summary_row(
 def _curve_rows(metric: str, curve: ThresholdCurve | None, label: str) -> list[SummaryRow]:
     """One row per cut in `THRESHOLD_CUTS`, whether or not the curve was computed.
 
-    All four cuts, always. README.md pre-registers the curve rather than a figure at one cut,
+    All four cuts, always. PROJECT.md pre-registers the curve rather than a figure at one cut,
     because a rate quoted at a single threshold cannot be told apart from a rate that only holds
     at the threshold somebody picked.
 
@@ -527,7 +527,7 @@ def _safety_rows(safety: SafetyRates | None, *, suffix: str, label_suffix: str) 
     check on the other end, for rows that arrive here already filtered.
 
     Every `AttackType` appears, including the ones with no items — `prompt_injection` has none in
-    any main run by design, and README.md requires the zero be printed with its reason rather than
+    any main run by design, and PROJECT.md requires the zero be printed with its reason rather than
     left out.
     """
     rows = _curve_rows(
@@ -583,7 +583,7 @@ def summary_rows(summary: RunSummary) -> list[SummaryRow]:
 
     Returns:
         Every row, unfiltered — including both the unconditioned and the well-formed-only reading
-        of each axis metric, per README.md's rule that each is reported twice. Filtering is the
+        of each axis metric, per PROJECT.md's rule that each is reported twice. Filtering is the
         caller's business, subject to `check_safety_pairing`.
     """
     rows: list[SummaryRow] = []

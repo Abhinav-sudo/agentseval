@@ -386,7 +386,7 @@ def test_the_two_methods_are_labelled_on_the_aggregate() -> None:
 # --------------------------------------------------------------------------------------
 
 
-def test_the_registered_readings_match_the_table_in_the_readme() -> None:
+def test_the_registered_readings_match_the_table_in_project_md() -> None:
     """Pinned, so moving a rate onto a friendlier dimension fails here rather than passing."""
     assert tuple(
         (reading.name, reading.dimension, reading.counts_below_cut)

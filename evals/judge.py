@@ -38,7 +38,7 @@ both a leak in the blind and a fact about the model.
 **Scores are 1-`JUDGE_SCALE_MAX` per dimension plus `overall`, and nothing else.** No `label`,
 no pass/fail: `schema.LabelSpace` keeps `rubric_1_5` and `binary_behavioral` apart on purpose,
 and a judge emitting both would be inventing a per-call mapping between them. Any threshold is
-pre-registered in README.md before a graded run.
+pre-registered in PROJECT.md before a graded run.
 
 **A parse failure is ours, not the candidate's.** It is recorded with `parse_ok=False`, `overall`
 None, and the raw completion kept — never a zero, which would average in as a real judgement.
@@ -1135,7 +1135,7 @@ def render_summary(scores: Sequence[JudgeScore]) -> str:
 
     First-pass parse rate, repair rate, and unverified-span count are reported here because they
     describe the instrument rather than the responses. None of them belongs in a candidate's
-    `format_violation_rate` (README.md).
+    `format_violation_rate` (PROJECT.md).
     """
     total = len(scores)
     parsed = [score for score in scores if score.parse_ok]

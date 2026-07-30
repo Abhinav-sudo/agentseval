@@ -1,8 +1,9 @@
-"""Frontier agent adapter: Claude Sonnet via Anthropic, or Gemini via Google.
+"""Frontier agent adapter: Gemini via Google, or Claude Sonnet via Anthropic.
 
-Locked decision (PROJECT.md): the frontier arm is Claude Sonnet, with a GPT-4o-class model
-as the permitted alternative. `FRONTIER_PROVIDER` selects the host and `FRONTIER_MODEL` the
-model string.
+Locked decision (PROJECT.md): the frontier arm is one current-generation model from a frontier
+lab — currently Gemini 3.6 Flash, with Claude Sonnet and a GPT-4o-class model as the permitted
+alternatives. `FRONTIER_PROVIDER` selects the host and `FRONTIER_MODEL` that host's own model
+string.
 
 No adapter here may send a `tools` array, even though both APIs support it and would parse
 tool calls far more reliably than our prompt protocol does. The OSS agent has no equivalent,
@@ -60,6 +61,16 @@ Provider = Literal["anthropic", "gemini"]
 #: Anthropic stays the default so an existing `.env` that names only `ANTHROPIC_API_KEY` and
 #: `FRONTIER_MODEL` keeps resolving to the arm it always did.
 DEFAULT_PROVIDER = "anthropic"
+
+#: Each provider's own default model, for an `.env` that names a provider and no model. Read by
+#: the adapters and by `resolved_frontier_model` alike, so a surface that wants to *name* the
+#: model without building an adapter cannot derive a different id from the one that is sent.
+DEFAULT_MODELS: Mapping[str, str] = MappingProxyType(
+    {
+        "anthropic": DEFAULT_FRONTIER_MODEL,
+        "gemini": DEFAULT_GEMINI_MODEL,
+    }
+)
 
 #: Model-id prefixes each provider will actually serve.
 #:
@@ -132,7 +143,7 @@ class FrontierAdapter(ChatAdapter):
             ConfigError: the resolved model id belongs to another provider.
         """
         self.base_url = base_url
-        resolved = model_id or os.environ.get("FRONTIER_MODEL") or DEFAULT_FRONTIER_MODEL
+        resolved = model_id or resolved_frontier_model(self.provider)[1]
         check_model_matches_provider(self.provider, resolved)
         super().__init__(
             model_id=resolved,
@@ -248,7 +259,7 @@ class GeminiFrontierAdapter(OpenAICompatibleAdapter):
                 switched.
         """
         self.base_url = base_url
-        resolved = model_id or os.environ.get("FRONTIER_MODEL") or DEFAULT_GEMINI_MODEL
+        resolved = model_id or resolved_frontier_model(self.provider)[1]
         check_model_matches_provider(self.provider, resolved)
         super().__init__(
             model_id=resolved,
@@ -263,6 +274,28 @@ PROVIDERS: dict[str, type[ChatAdapter]] = {
     "anthropic": FrontierAdapter,
     "gemini": GeminiFrontierAdapter,
 }
+
+
+def resolved_frontier_model(provider: Provider | str | None = None) -> tuple[str, str]:
+    """Return the `(provider, model_id)` this environment selects, without building anything.
+
+    What `load_frontier_adapter` is about to do, answered without a credential — which is the
+    point. A surface that displays the model under test has to read the id before a session
+    exists (`app.py` labels its arm selector above the code that builds one), and constructing
+    an adapter for a label would make the label a second place a missing key fails, ahead of
+    the one that reports it properly. Deriving the id independently instead is how a Gemini run
+    came to be labelled "Frontier (Claude)".
+
+    Raises:
+        ConfigError: `FRONTIER_PROVIDER` names a host we have no configuration for. Refused
+            here as well as in the loader, since a label naming an unreachable host would
+            describe a run that cannot happen.
+    """
+    resolved = (provider or os.environ.get("FRONTIER_PROVIDER") or DEFAULT_PROVIDER).lower()
+    if resolved not in PROVIDERS:
+        known = ", ".join(sorted(PROVIDERS))
+        raise ConfigError(f"Unknown FRONTIER_PROVIDER {resolved!r}; expected one of: {known}")
+    return resolved, os.environ.get("FRONTIER_MODEL") or DEFAULT_MODELS[resolved]
 
 
 def load_frontier_adapter(
@@ -282,8 +315,5 @@ def load_frontier_adapter(
             that cannot serve `FRONTIER_MODEL`. Failing here beats defaulting to Anthropic,
             which would silently produce a run whose manifest disagreed with what served it.
     """
-    resolved = (provider or os.environ.get("FRONTIER_PROVIDER") or DEFAULT_PROVIDER).lower()
-    if resolved not in PROVIDERS:
-        known = ", ".join(sorted(PROVIDERS))
-        raise ConfigError(f"Unknown FRONTIER_PROVIDER {resolved!r}; expected one of: {known}")
+    resolved, _ = resolved_frontier_model(provider)
     return PROVIDERS[resolved](**kwargs)

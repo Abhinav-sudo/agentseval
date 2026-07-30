@@ -41,9 +41,10 @@ from agent.models.frontier import (
     FrontierAdapter,
     GeminiFrontierAdapter,
     load_frontier_adapter,
+    resolved_frontier_model,
 )
 from agent.models.judge_model import JudgeAdapter, load_judge_model
-from agent.models.oss import OSSAdapter
+from agent.models.oss import OSSAdapter, resolved_oss_model
 
 MESSAGES = [
     {"role": "system", "content": "You are a careful assistant."},
@@ -1203,6 +1204,78 @@ def test_gemini_frontier_reports_its_missing_key_by_name(monkeypatch):
     with pytest.raises(ConfigError) as exc:
         load_frontier_adapter()
     assert "GEMINI_API_KEY" in str(exc.value)
+
+
+def test_resolving_the_frontier_model_needs_no_credential(monkeypatch):
+    """A surface that names the model it is about to use has to read the id without a key.
+
+    `app.py` labels its arm selector before any session exists, and building an adapter to
+    read `model_id` off it would demand a credential for a label — so the label would be a
+    second place a missing key can fail, ahead of the one that reports it properly.
+    """
+    monkeypatch.setenv("FRONTIER_PROVIDER", "gemini")
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("FRONTIER_MODEL", raising=False)
+
+    assert resolved_frontier_model() == ("gemini", "gemini-3.6-flash")
+
+
+def test_resolving_the_frontier_model_reads_both_variables(monkeypatch):
+    monkeypatch.setenv("FRONTIER_PROVIDER", "anthropic")
+    monkeypatch.setenv("FRONTIER_MODEL", "claude-3-5-sonnet-20241022")
+
+    assert resolved_frontier_model() == ("anthropic", "claude-3-5-sonnet-20241022")
+
+
+def test_resolving_the_frontier_model_rejects_an_unknown_provider(monkeypatch):
+    """Same refusal as `load_frontier_adapter`: a label naming a host we cannot reach would
+    describe a run that is about to fail."""
+    monkeypatch.setenv("FRONTIER_PROVIDER", "bedrock")
+
+    with pytest.raises(ConfigError) as exc:
+        resolved_frontier_model()
+    assert "bedrock" in str(exc.value)
+
+
+def test_the_resolved_frontier_id_is_the_one_the_adapter_sends(monkeypatch):
+    """The regression this resolver exists for, held for every provider.
+
+    A display path that derived the default model id separately from the adapter is how
+    `app.py` came to label a Gemini run "Frontier (Claude)". Asserting the two agree per
+    provider is what makes the label evidence about the request rather than a caption.
+    """
+    from agent.models.frontier import PROVIDERS
+
+    monkeypatch.delenv("FRONTIER_MODEL", raising=False)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+    monkeypatch.setenv("GEMINI_API_KEY", "k")
+
+    for provider in PROVIDERS:
+        resolved = resolved_frontier_model(provider)
+        assert resolved == (provider, load_frontier_adapter(provider).model_id)
+
+
+def test_resolving_the_oss_model_needs_no_credential(monkeypatch):
+    monkeypatch.setenv("OSS_PROVIDER", "together")
+    monkeypatch.delenv("TOGETHER_API_KEY", raising=False)
+    monkeypatch.setenv("OSS_MODEL", "Qwen/Qwen2.5-7B-Instruct-Turbo")
+
+    assert resolved_oss_model() == ("together", "Qwen/Qwen2.5-7B-Instruct-Turbo")
+
+
+def test_the_resolved_oss_id_is_the_one_the_adapter_sends(monkeypatch):
+    monkeypatch.delenv("OSS_MODEL", raising=False)
+    monkeypatch.delenv("OSS_PROVIDER", raising=False)
+    monkeypatch.setenv("GROQ_API_KEY", "k")
+
+    assert resolved_oss_model() == ("groq", OSSAdapter().model_id)
+
+
+def test_resolving_the_oss_model_rejects_an_unknown_provider(monkeypatch):
+    monkeypatch.setenv("OSS_PROVIDER", "vllm-on-my-laptop")
+
+    with pytest.raises(ConfigError, match="vllm-on-my-laptop"):
+        resolved_oss_model()
 
 
 def test_load_agent_model_rejects_the_judge_role():

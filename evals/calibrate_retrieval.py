@@ -152,7 +152,7 @@ class GroupStats:
 
         Empty is a real answer here — a dataset with no unanswerable items has no unanswerable
         distribution — and refusing would push the caller into omitting the group, which is the
-        reporting failure README.md forbids elsewhere.
+        reporting failure PROJECT.md forbids elsewhere.
         """
         values = [float(score) for score in scores]
         if not values:

@@ -30,6 +30,23 @@ DEFAULT_OSS_MODEL = "llama-3.1-8b-instant"
 DEFAULT_PROVIDER = "groq"
 
 
+def resolved_oss_model(provider: Provider | str | None = None) -> tuple[str, str]:
+    """Return the `(provider, model_id)` this environment selects, without building anything.
+
+    The counterpart of `frontier.resolved_frontier_model`, and here for the same reason: a
+    surface that names the model under test must read the id without a credential, and must
+    read it from the same expression the adapter does rather than from a caption of its own.
+
+    Raises:
+        ConfigError: `OSS_PROVIDER` names a host we have no configuration for.
+    """
+    resolved = (provider or os.environ.get("OSS_PROVIDER") or DEFAULT_PROVIDER).lower()
+    if resolved not in PROVIDERS:
+        known = ", ".join(sorted(PROVIDERS))
+        raise ConfigError(f"Unknown OSS_PROVIDER {resolved!r}; expected one of: {known}")
+    return resolved, os.environ.get("OSS_MODEL") or DEFAULT_OSS_MODEL
+
+
 class OSSAdapter(OpenAICompatibleAdapter):
     """Llama 3.1 8B Instant behind an OpenAI-compatible hosted endpoint."""
 
@@ -52,16 +69,12 @@ class OSSAdapter(OpenAICompatibleAdapter):
                 here beats defaulting to Groq, which would silently produce a run whose
                 manifest disagreed with what actually served it.
         """
-        resolved = (provider or os.environ.get("OSS_PROVIDER") or DEFAULT_PROVIDER).lower()
-        if resolved not in PROVIDERS:
-            known = ", ".join(sorted(PROVIDERS))
-            raise ConfigError(f"Unknown OSS_PROVIDER {resolved!r}; expected one of: {known}")
-
+        resolved, resolved_model = resolved_oss_model(provider)
         default_url, key_var = PROVIDERS[resolved]
         self.provider = resolved
         self.base_url = base_url or default_url
         super().__init__(
-            model_id=model_id or os.environ.get("OSS_MODEL") or DEFAULT_OSS_MODEL,
+            model_id=model_id or resolved_model,
             api_key=api_key or require_env(key_var),
             **kwargs,
         )

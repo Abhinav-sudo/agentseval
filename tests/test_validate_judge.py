@@ -296,7 +296,7 @@ def test_weighted_and_unweighted_kappa_differ_on_the_same_data() -> None:
     """The weighting is load-bearing, not decoration.
 
     Unweighted kappa scores this single off-by-one disagreement as harshly as it would score a
-    1-vs-5, which is why README.md pre-registers the quadratic form. `_identity_weights` exists
+    1-vs-5, which is why PROJECT.md pre-registers the quadratic form. `_identity_weights` exists
     only so this comparison can be made on real data; nothing reports it.
     """
     weighted = cohens_kappa(SCORED)
@@ -1072,8 +1072,8 @@ def test_the_bands_are_read_from_the_citation_rather_than_a_literal() -> None:
     assert dict(JUDGE_SCORE_BANDS) == {"fail": (1, 2), "adequate": (3, 3), "pass": (4, 5)}
 
 
-def test_the_registered_coverage_is_pinned_to_the_table_in_the_readme() -> None:
-    """Rows are added by registering them in README.md first. Comparing a rule against a human
+def test_the_registered_coverage_is_pinned_to_the_table_in_project_md() -> None:
+    """Rows are added by registering them in PROJECT.md first. Comparing a rule against a human
     label without a registered row is an unregistered comparison."""
     assert [
         (row.key, row.checks, row.judge_dimension) for row in BASELINE_COVERAGE
@@ -1089,14 +1089,14 @@ def test_the_registered_coverage_is_pinned_to_the_table_in_the_readme() -> None:
     assert all(check in CHECK_NAMES for row in BASELINE_COVERAGE for check in row.checks)
 
 
-def test_every_registered_row_appears_in_the_readme_table() -> None:
+def test_every_registered_row_appears_in_the_project_md_table() -> None:
     """The table is the registration; the code reads it rather than inventing rows. If the two drift
     apart, the artifact cites a rule nobody registered."""
-    readme = (Path(__file__).resolve().parents[1] / "README.md").read_text(encoding="utf-8")
+    registered = (Path(__file__).resolve().parents[1] / "PROJECT.md").read_text(encoding="utf-8")
 
     for row in BASELINE_COVERAGE:
-        assert f"| `{row.key}` |" in readme
-        assert f"| `{row.judge_dimension}` |" in readme
+        assert f"| `{row.key}` |" in registered
+        assert f"| `{row.judge_dimension}` |" in registered
 
 
 def test_each_instrument_is_scored_against_the_human_labels_in_its_own_space() -> None:
@@ -1286,7 +1286,7 @@ def test_the_rules_version_and_the_bands_citation_travel_with_every_result() -> 
     assert report["rules_version"] == rules_version()
     assert report["bands"]["citation"] == BANDS_CITATION
     assert report["bands"]["excluded_band"] == "adequate"
-    assert report["pre_registered_at"] == "README.md#pre-registered-scoring-rules"
+    assert report["pre_registered_at"] == "PROJECT.md#pre-registered-scoring-rules"
     assert "nothing here binarises a human" in report["human_side"]
 
 
@@ -1856,7 +1856,7 @@ def test_an_undefined_kappa_fails_the_gate() -> None:
 def test_the_gate_names_where_it_was_pre_registered() -> None:
     gate = evaluate_gate(report_for([1, 2], [1, 2]))
 
-    assert gate["pre_registered_at"].startswith("README.md")
+    assert gate["pre_registered_at"].startswith("PROJECT.md")
     assert gate["statistic"] == "quadratic_weighted_cohens_kappa"
 
 

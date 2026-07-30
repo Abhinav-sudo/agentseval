@@ -429,7 +429,7 @@ def check_protocol_compliance(steps: list[dict[str, Any]]) -> CheckResult:
     The compliance rate per model is a primary reported metric.
 
     Truncations do not count against it. A response our `max_tokens` cut off did not break the
-    contract — the ceiling interrupted it — and README.md keeps `budget_induced` truncations
+    contract — the ceiling interrupted it — and PROJECT.md keeps `budget_induced` truncations
     out of `format_violation_rate` for exactly that reason. They are reported in the detail so
     a perfect compliance figure over a truncated run still says what happened.
     """
@@ -565,7 +565,7 @@ def check_model_call_budget(
 
     `stopped_reason` is the typed field from the turn record and decides the answer when it is
     given: a count alone cannot tell an agent that answered on its last permitted call from one
-    that was cut off there, and README.md requires rates to come from typed fields rather than
+    that was cut off there, and PROJECT.md requires rates to come from typed fields rather than
     from an inference over a number. Without it the check falls back to the count, which is the
     most an isolated caller can honestly say.
     """

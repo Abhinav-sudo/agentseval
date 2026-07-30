@@ -249,7 +249,7 @@ def test_no_evidence_at_all_is_allowed():
 
 def test_the_judge_never_returns_a_binary_label():
     """`LabelSpace` keeps rubric_1_5 and binary_behavioral apart; a judge emitting both would be
-    inventing a per-call mapping between them (README.md)."""
+    inventing a per-call mapping between them (PROJECT.md)."""
     assert "label" not in judge_schema()
     _, defect = parse_verdict(json.dumps(verdict() | {"label": "pass"}))
     assert defect is not None and "label" in defect
@@ -869,7 +869,7 @@ def test_write_scores_round_trips(tmp_path):
 
 def test_the_summary_keeps_the_judge_side_numbers_separate(tmp_path):
     """First-pass parse rate, repair rate, and unverified spans describe the instrument, and
-    never enter a candidate's format_violation_rate (README.md)."""
+    never enter a candidate's format_violation_rate (PROJECT.md)."""
     scores = [
         score_pair(pair(), adapter(verdict())),
         score_pair(pair(), adapter("nope", verdict())),

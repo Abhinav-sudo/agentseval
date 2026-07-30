@@ -38,7 +38,7 @@ Three budgets bound a turn, and they are independent because they measure differ
   keeps replying with unparseable text.
 
 Infrastructure failures are charged to none of them: they are retried, and if they persist
-the item ends as `infrastructure_failed` and is excluded from axis scoring (see README.md).
+the item ends as `infrastructure_failed` and is excluded from axis scoring (see PROJECT.md).
 An outage on our side is not evidence about a model.
 
 Runs are at temperature 0.
@@ -347,7 +347,7 @@ class AgentResult:
         tool_errors_by_type: Those counts keyed by `ToolErrorReason` value.
         infrastructure_failed: True when a tool failed for reasons outside the model's
             control and retries did not clear it. Such items are excluded from axis scoring
-            (README.md), which is only defensible because the flag is recorded per item and
+            (PROJECT.md), which is only defensible because the flag is recorded per item and
             applied identically to both arms.
         infrastructure_error: The failure that ended the turn, or None.
         usd_cost: Summed over calls that reported a cost, or None when none did.
@@ -972,7 +972,7 @@ class Agent:
             except ToolInfraError as exc:
                 # Retries are already spent by here. The item ends, and is excluded from axis
                 # scoring rather than scored on whatever the model managed before our tool
-                # broke (README.md).
+                # broke (PROJECT.md).
                 infrastructure_error = f"{type(exc).__name__}: {exc}"
                 step.error = infrastructure_error
                 stopped_reason = STOPPED_INFRASTRUCTURE_FAILED

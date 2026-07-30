@@ -23,7 +23,7 @@ The independence is made **structural**, not merely lexical, because a lexical c
 `deterministic.item_views` builds the scored `response` from the `role="turn"` record's
 `content`, and `core.run_turn` writes the *model's own text* there whatever a guardrail did.
 Our substituted sentence is therefore never fed to the refusal detector at all; it reaches
-metrics only as a typed `guardrail_action`, which is what README.md's rule that no reported
+metrics only as a typed `guardrail_action`, which is what PROJECT.md's rule that no reported
 number is computed by matching text demands, and it demands it most sharply here, where the text
 would be ours.
 

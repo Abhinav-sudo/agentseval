@@ -49,10 +49,10 @@ The space is also in the sidecar's filename, so labelling one run in both spaces
 files rather than one mixed file that no reader would accept. That is a required workflow, not a
 hypothetical: the judge-vs-rules baseline leg compares each instrument against humans in its own
 space, so it needs native binary labels on the same items the ordinal report reads 1-5 labels for
-(README.md). **Randomise the order between the two passes** — a different `--seed` — and leave time
+(PROJECT.md). **Randomise the order between the two passes** — a different `--seed` — and leave time
 between them. An annotator who labels the same items in the same order twice is partly recalling
 the first pass rather than judging the second, and the two label sets are then not independent.
-They are not independent in any case with one annotator; the README says so rather than claiming
+They are not independent in any case with one annotator; PROJECT.md says so rather than claiming
 otherwise.
 
 The annotator sees `expected_behavior` and `notes`; a model never does
@@ -236,7 +236,7 @@ def labels_path(
     **The label space is part of the filename, and `label_space` has no default.** One annotator
     labelling one run in both spaces is a real and required workflow — the judge-vs-rules baseline
     leg needs native `binary_behavioral` labels on the same items the ordinal report reads
-    `rubric_1_5` labels for (README.md). Without the space in the name both passes would append to
+    `rubric_1_5` labels for (PROJECT.md). Without the space in the name both passes would append to
     one file, and `validate_judge._require_single_space` would then refuse the result: an
     annotator's afternoon lost to a naming convention. Two files, same items, is the arrangement
     that works, and only the filename can carry that.

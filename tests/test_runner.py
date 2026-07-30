@@ -386,7 +386,7 @@ def test_infrastructure_failure_is_recorded_and_the_run_continues(
     run_id = run_eval(adapter, path, runs_dir=runs_dir, kb_dir=kb_dir)
 
     turns = {record["item_id"]: record for record in turn_records(run_id, runs_dir)}
-    # Recorded, not dropped, and not excluded here: metrics.py alone excludes, per README.
+    # Recorded, not dropped, and not excluded here: metrics.py alone excludes, per PROJECT.md.
     assert set(turns) == {"a", "boom", "c"}
     assert turns["boom"]["infrastructure_failed"] is True
     assert "provider unreachable" in turns["boom"]["error"]

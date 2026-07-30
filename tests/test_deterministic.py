@@ -321,7 +321,7 @@ def test_protocol_compliance_counts_violations_not_calls() -> None:
 
 
 def test_a_truncation_is_ours_and_does_not_break_compliance() -> None:
-    """README.md keeps `budget_induced` truncations out of `format_violation_rate`: our ceiling
+    """PROJECT.md keeps `budget_induced` truncations out of `format_violation_rate`: our ceiling
     interrupted the reply, the model did not break the contract."""
     steps = [
         {"format_violation": FormatViolation.TRUNCATED.value, "budget_induced": True},
@@ -460,7 +460,7 @@ def test_without_a_stopped_reason_the_ceiling_is_read_as_a_cut_off_and_says_so()
 
 def test_tool_errors_break_down_by_typed_reason() -> None:
     """Reads `tool_error_reason`, never error prose: rewording an error message must not move a
-    reported rate (README.md)."""
+    reported rate (PROJECT.md)."""
     steps = [
         {"tool_error_reason": ToolErrorReason.MISSING_ARG.value},
         {"tool_error_reason": ToolErrorReason.MISSING_ARG.value},

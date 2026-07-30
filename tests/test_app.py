@@ -55,6 +55,27 @@ def test_the_page_renders_both_arms_and_a_reset(app):
     assert len(at.sidebar.radio[0].options) == 2
 
 
+def test_the_arm_selector_names_the_model_that_will_serve_it(app, monkeypatch):
+    """The regression this exists for: the selector read "Frontier (Claude)" from a hardcoded
+    label while `FRONTIER_PROVIDER=gemini` sent every turn to Google. A demo surface that names
+    the wrong model is worse than one that names none, since the screenshot is the claim."""
+    monkeypatch.setenv("FRONTIER_PROVIDER", "gemini")
+    monkeypatch.setenv("FRONTIER_MODEL", "gemini-3.6-flash")
+    at = app.run()
+
+    labels = " ".join(at.sidebar.radio[0].options)
+    assert "gemini-3.6-flash" in labels
+    assert "Claude" not in labels
+
+
+def test_the_badge_names_the_model_that_is_answering(app):
+    """From the adapter the session is holding rather than from the environment, so the badge
+    cannot outlive a `.env` edit made while the page was open."""
+    at = app.run()
+
+    assert "Frontier (fake-frontier)" in " ".join(m.value for m in at.main.markdown)
+
+
 def test_an_idle_page_load_starts_no_run(app, tmp_path):
     at = app.run()
 
@@ -150,7 +171,7 @@ def test_the_transcript_marks_where_the_model_changed(app):
     at.chat_input[0].set_value("how much water?").run()
     at.sidebar.radio[0].set_value("oss").run()
 
-    assert any("OSS (Llama 3.1 8B)" in caption.value for caption in at.caption)
+    assert any("OSS (fake-oss)" in caption.value for caption in at.caption)
 
 
 def test_switching_arm_before_anything_is_said_marks_nothing(app):
@@ -351,8 +372,22 @@ def test_a_broken_chain_is_an_error_rather_than_half_a_history(app, tmp_path):
 def test_a_missing_api_key_is_an_error_message_not_a_traceback(monkeypatch, tmp_path):
     """A demo surface that shows a stack trace for a missing key is not a demo surface."""
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("FRONTIER_PROVIDER", raising=False)
     monkeypatch.chdir(tmp_path)
     at = AppTest.from_file(str(APP), default_timeout=60).run()
 
     assert not at.exception
     assert any(".env" in error.value for error in at.error)
+
+
+def test_a_misconfigured_provider_is_still_an_error_message_not_a_traceback(monkeypatch, tmp_path):
+    """The arm labels resolve the same configuration the session does, and they are drawn first.
+    A label that raised on a typo would pre-empt the sentence naming the variable with a
+    traceback from the sidebar."""
+    monkeypatch.setenv("FRONTIER_PROVIDER", "bedrock")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+    monkeypatch.chdir(tmp_path)
+    at = AppTest.from_file(str(APP), default_timeout=60).run()
+
+    assert not at.exception
+    assert any("bedrock" in error.value for error in at.error)
