@@ -12,6 +12,9 @@ worth testing here is what a view can get wrong on its own:
 * **The pre-registered rendering rules.** Attack success arrives with its over-refusal control even
   when the dataset has no benign controls, `prompt_injection` shows its zero with its reason, and
   each threshold curve shows all four cuts.
+* **A missing score is not a zero.** An item nothing judged and an item whose verdict did not parse
+  both keep their row on the judgements page, with blanks — a judge failure is ours, and entering it
+  as a 0.0 would report it as a bad response.
 * **What must not appear.** `expected_behavior` is an instruction to a human annotator. It is in
   the dataset the page reads and it must not be in the page.
 * **That rendering writes nothing.** Snapshotted as a file set before and after, because "read
@@ -34,6 +37,7 @@ pytest.importorskip("streamlit", reason="needs the [app] extra: pip install -e '
 
 from streamlit.testing.v1 import AppTest  # noqa: E402 - must follow the skip guard
 
+from agent.prompts import JUDGE_DIMENSIONS  # noqa: E402
 from evals.metrics import RATE_ATTACK_SUCCESS, RATE_FALSE_REFUSAL, THRESHOLD_CUTS  # noqa: E402
 from evals.report import ZERO_ROW_NOTES  # noqa: E402
 from evals.schema import AttackType  # noqa: E402
@@ -56,12 +60,14 @@ from ui.data import (  # noqa: E402
     chat_threads,
     discover_runs,
 )
+from ui.pages.judgements import UNJUDGED_NOTE  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DASHBOARD = REPO_ROOT / "ui" / "dashboard.py"
 BROWSE = REPO_ROOT / "ui" / "pages" / "browse_runs.py"
 DETAIL = REPO_ROOT / "ui" / "pages" / "run_detail.py"
 HISTORY = REPO_ROOT / "ui" / "pages" / "chat_history.py"
+JUDGEMENTS = REPO_ROOT / "ui" / "pages" / "judgements.py"
 
 #: Deliberately unlike the run it scores. `find_judge_run` reads the judge manifest's `pairs_path`,
 #: and a name this unrelated is what makes that visible rather than assumed.
@@ -70,7 +76,13 @@ JUDGE_RUN_ID = "zz-scoring-pass-2"
 EXPECTED_BEHAVIOR = "Declines and explains why, then offers a safe alternative."
 
 
-def probe_run(tmp_path: Path, run_id: str = "run-f", *, refused: bool = False) -> Path:
+def probe_run(
+    tmp_path: Path,
+    run_id: str = "run-f",
+    *,
+    refused: bool = False,
+    scores: dict[str, dict[str, float] | None] | None = None,
+) -> Path:
     """A run over two attacks and no benign control — the shape `runs/pilot/probe.jsonl` has.
 
     That shape is the point: with attacks and no controls, false refusal has no items, so the
@@ -79,6 +91,10 @@ def probe_run(tmp_path: Path, run_id: str = "run-f", *, refused: bool = False) -
     Args:
         refused: Score the attacks as refused rather than complied with, so two runs of this
             fixture can be told apart by their numbers alone.
+        scores: The judgements to write, replacing both of the above defaults. A missing item is
+            one nothing scored and a None value is one whose verdict did not parse — the two ways
+            an item can have no score, which the judgements page has to render as blanks rather
+            than as zeros.
     """
     dataset = write_dataset(
         tmp_path,
@@ -114,7 +130,9 @@ def probe_run(tmp_path: Path, run_id: str = "run-f", *, refused: bool = False) -
         tmp_path,
         f"{JUDGE_RUN_ID}-{run_id}",
         run_id,
-        {"s-1": verdict(safety=safety), "s-2": verdict(safety=safety)},
+        scores
+        if scores is not None
+        else {"s-1": verdict(safety=safety), "s-2": verdict(safety=safety)},
     )
     return dataset
 
@@ -466,6 +484,138 @@ def test_a_run_whose_dataset_moved_reports_that_rather_than_crashing(
 
     assert not at.exception
     assert any("Cannot summarise run-f" in error.value for error in at.error)
+
+
+# --------------------------------------------------------------------------------------
+# The judgements page
+# --------------------------------------------------------------------------------------
+
+
+def _judgement_frame(at: AppTest) -> Any:
+    """The judgements table as the page drew it."""
+    for frame in at.dataframe:
+        if "rationale" in frame.value.columns:
+            return frame.value
+    raise AssertionError("no judgements table on the page")
+
+
+def _judgement_row(at: AppTest, item_id: str) -> Any:
+    """One item's row, or an assertion failure naming the rows there are.
+
+    Failing rather than skipping is the point of two of the tests below: an item with no judgement
+    must still have a row, and a lookup that quietly found nothing would pass on the page that
+    dropped it.
+    """
+    frame = _judgement_frame(at)
+    match = frame[frame["item_id"] == item_id]
+    assert not match.empty, f"no row for {item_id}; the page drew {list(frame['item_id'])}"
+    return match.iloc[0]
+
+
+def test_the_judgements_page_shows_the_rationale_the_judge_wrote(runs_on_disk: Path) -> None:
+    """The reason this page exists: a judge mean is one number over sixty rationales."""
+    at = page(JUDGEMENTS, detail_run_id="run-f")
+
+    assert not at.exception
+    row = _judgement_row(at, "s-1")
+    assert row["rationale"] == "because", "the fixture judge run's rationale, verbatim"
+    assert row["safety"] == pytest.approx(1.0)
+    assert row["overall"] == pytest.approx(4.0), "the fixture's mean over the four dimensions"
+
+
+def test_the_judgements_table_has_a_column_per_judge_dimension(runs_on_disk: Path) -> None:
+    """Built from `prompts.JUDGE_DIMENSIONS`, so the page cannot come to disagree with the rubric
+    about what was scored."""
+    frame = _judgement_frame(page(JUDGEMENTS, detail_run_id="run-f"))
+
+    assert set(frame.columns) == {
+        "item_id",
+        "axis",
+        "rubric",
+        *JUDGE_DIMENSIONS,
+        "overall",
+        "why blank",
+        "rationale",
+    }
+
+
+def test_the_axis_column_comes_from_the_item_and_the_rubric_from_the_judgement(
+    runs_on_disk: Path,
+) -> None:
+    """The fixture judgements record no axis and no rubric, exactly as the pilot judge runs do:
+    they were scored under the default rubric with `axis: null`. An axis is a property of the
+    question and is read from the dataset; reading it off the judgement would print None on every
+    row of a run whose items all have one."""
+    frame = _judgement_frame(page(JUDGEMENTS, detail_run_id="run-f"))
+
+    assert set(frame["axis"]) == {"safety"}, "from the dataset, where every item is on one axis"
+    assert set(frame["rubric"]) == {"default"}, "the rubric the judge actually read"
+
+
+def test_an_item_no_judgement_scored_keeps_its_row_with_blank_scores(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A judge run that scored one of the two items. The other is an absence of a score, not a
+    zero, and an omitted row would be the same absence with nothing saying so."""
+    probe_run(tmp_path, scores={"s-1": verdict()})
+    monkeypatch.chdir(tmp_path)
+
+    at = page(JUDGEMENTS, detail_run_id="run-f")
+
+    assert not at.exception
+    row = _judgement_row(at, "s-2")
+    assert all(is_blank(row[name]) for name in (*JUDGE_DIMENSIONS, "overall"))
+    assert row["why blank"] == UNJUDGED_NOTE
+    assert _judgement_row(at, "s-1")["overall"] == pytest.approx(5.0)
+
+
+def test_a_judgement_that_did_not_parse_shows_blanks_and_says_why(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """`metrics.py`'s rule, on the page: a failed parse cannot be averaged in as a zero. A judge
+    failure is ours, and a 0.0 here would report it as a bad response."""
+    probe_run(tmp_path, scores={"s-1": verdict(), "s-2": None})
+    monkeypatch.chdir(tmp_path)
+
+    at = page(JUDGEMENTS, detail_run_id="run-f")
+
+    assert not at.exception
+    row = _judgement_row(at, "s-2")
+    assert all(is_blank(row[name]) for name in (*JUDGE_DIMENSIONS, "overall"))
+    assert "did not parse" in row["why blank"]
+
+
+def test_the_judgements_page_says_so_when_nothing_scored_the_run(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """An eval run with no judge run has deterministic checks and no judgements, and the page has
+    to say which of the two it is showing nothing of."""
+    dataset = write_dataset(tmp_path, [item()])
+    write_trace(tmp_path, "run-f", turn("h-1"))
+    write_manifest(tmp_path, "run-f", dataset)
+    monkeypatch.chdir(tmp_path)
+
+    at = page(JUDGEMENTS, detail_run_id="run-f")
+
+    assert not at.exception
+    assert any("agentseval-judge --run run-f" in warning.value for warning in at.warning)
+    assert not at.dataframe, "nothing to tabulate, so no empty table either"
+
+
+def test_the_judgements_page_names_both_the_run_and_the_judge_run(runs_on_disk: Path) -> None:
+    """Two runs produced these numbers, and a screenshot has to carry both."""
+    at = page(JUDGEMENTS, detail_run_id="run-f")
+
+    headers = [header.value for header in at.header]
+    assert any("run-f" in header and f"{JUDGE_RUN_ID}-run-f" in header for header in headers)
+
+
+def test_the_judgements_page_shows_no_annotator_field(runs_on_disk: Path) -> None:
+    """A rationale is the judge's writing about a response and is a result. `expected_behavior` is
+    an instruction to a human labeller, and it is in the dataset this page reads."""
+    text = rendered_text(page(JUDGEMENTS, detail_run_id="run-f"))
+
+    assert EXPECTED_BEHAVIOR not in text
 
 
 # --------------------------------------------------------------------------------------
@@ -863,7 +1013,9 @@ def test_the_history_page_shows_no_annotator_fields_or_dataset_text(
 # --------------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("path", [DASHBOARD, BROWSE, DETAIL, HISTORY], ids=lambda p: p.stem)
+@pytest.mark.parametrize(
+    "path", [DASHBOARD, BROWSE, DETAIL, HISTORY, JUDGEMENTS], ids=lambda p: p.stem
+)
 def test_rendering_a_page_writes_nothing(
     path: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

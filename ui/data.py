@@ -3,8 +3,9 @@ chat transcript back.
 
 Pure functions over `runs/`, with one Streamlit import for the cache decorator and nothing else
 from Streamlit — the widgets live in the pages. Everything here is a thin arrangement of
-`evals.metrics`: discovery is a glob, pairing is `metrics.find_judge_run`, and a summary is
-`metrics.summarise_run`. None of it recomputes anything the platform already computes.
+`evals.metrics`: discovery is a glob, pairing is `metrics.find_judge_run`, a summary is
+`metrics.summarise_run`, and the per-item join is `metrics.load_item_results`. None of it
+recomputes anything the platform already computes.
 
 Two properties worth stating, because both are load-bearing rather than incidental:
 
@@ -45,7 +46,13 @@ from agent.trace import (
     trace_path,
 )
 from evals.judge import judge_scores_path
-from evals.metrics import RunSummary, find_judge_run, summarise_run
+from evals.metrics import (
+    ItemResult,
+    RunSummary,
+    find_judge_run,
+    load_item_results,
+    summarise_run,
+)
 
 #: Where the pages look for runs unless told otherwise. The same default the CLIs use, so the
 #: browser lists what `agentseval-run` wrote without being pointed at it.
@@ -366,6 +373,52 @@ def summary_for(run: RunRef) -> RunSummary:
     return _summarise(
         run.run_id,
         str(run.runs_dir.resolve()),
+        _mtime_ns(run.trace_path),
+        _mtime_ns(run.judge_scores_path),
+    )
+
+
+@st.cache_data(show_spinner="Reading the judgements...")
+def _judgements(
+    run_id: str,
+    runs_dir: str,
+    judge_run_id: str | None,
+    trace_mtime_ns: int,
+    judge_mtime_ns: int,
+) -> list[ItemResult]:
+    """`load_item_results`, memoised on the run and on the files it read.
+
+    Every parameter is part of the cache key, on the same terms as `_summarise`: the two mtimes are
+    not read in the body and must not be renamed with a leading underscore, because Streamlit reads
+    that prefix as "exclude from the key" and a re-judged trace would keep serving the old
+    judgements under the same run id.
+
+    In memory only. `persist=` is deliberately not set: see the module docstring.
+    """
+    return load_item_results(run_id, judge_run_id=judge_run_id, runs_dir=Path(runs_dir))
+
+
+def judgements_for(run: RunRef) -> list[ItemResult]:
+    """Every item of `run` joined to the judgement made of it, one per dataset item.
+
+    An item nothing scored is here too, with `judge=None`; so is one whose judgement did not parse,
+    with `parse_ok=False`. Both are absences of a score rather than low scores, which is why
+    `ItemResult.dimension` answers None for them and why nothing here fills that in.
+
+    `run.judge_run_id` is passed rather than left to `load_run` to resolve, so a caller reading
+    these judgements and a caller reading the summary cannot disagree about which judge run scored
+    the trace.
+
+    Raises:
+        ValueError: `run` is not an eval run, or its dataset has changed since it was executed.
+        FileNotFoundError: the dataset it was executed over is no longer there.
+    """
+    # Absolute, for the reason `summary_for` gives: the cache outlives the working directory a
+    # relative path is relative to.
+    return _judgements(
+        run.run_id,
+        str(run.runs_dir.resolve()),
+        run.judge_run_id,
         _mtime_ns(run.trace_path),
         _mtime_ns(run.judge_scores_path),
     )
