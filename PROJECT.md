@@ -881,8 +881,10 @@ evals/
   report.py            human-readable output
 ui/
   dashboard.py         Streamlit entry script for the platform's read-only views
-  data.py              run discovery, judge pairing, cached summaries, chat transcripts
-  pages/               one script per view: browse_runs.py, run_detail.py, chat_history.py
+  data.py              run discovery, judge pairing, cached summaries, per-item judgements,
+                       chat transcripts
+  pages/               one script per view: browse_runs.py, chat_history.py, judgements.py,
+                       run_detail.py
 kb/                    markdown corpus + .index.npz / .index.json (both gitignored)
 runs/                  {run_id}.jsonl + {run_id}.manifest.json (gitignored)
 .cache/models/         cached provider responses (gitignored)
@@ -956,7 +958,8 @@ cuts, and a `compare_runs` that refuses two runs whose manifests disagree. `repo
 both a two-run comparison and a single run: `summary_rows` flattens a `RunSummary` into structured
 rows and `render_comparison` / `render_run_summary` format them. The report *files* are still
 stubs — `write_markdown_report`, `print_report`, and `agentseval-report` raise. `ui/` renders the
-same rows in a browser, read-only.
+same rows in a browser, read-only, and one page below them shows the judgements themselves —
+per item, with the rubric each was scored under and the rationale the judge wrote.
 
 `search_web` still raises `ToolInfraError` rather than `NotImplementedError` when the provider is
 unreachable or unconfigured: an outage is our gap, so the loop books it as infrastructure and
