@@ -32,13 +32,22 @@ of "what does this run say" are two answers. `SummaryRow.metric` is the machine 
 reason: `attack_success_rate:roleplay@3` names a bucket that `metrics.load_item_results` can be
 filtered by, and a human-readable label names nothing.
 
-`render_comparison`, `render_run_summary`, and `compare_main` are implemented. The report *files*
-are not: `write_markdown_report`, `print_report`, and `main` (`agentseval-report`) still raise.
+**A report file is short by dropping breakdowns, never readings.** `write_markdown_report` writes a
+committed artifact, and `runs/` is gitignored, so the file is the only form in which a result leaves
+this repository — which makes what it leaves out the most consequential choice in the module.
+`HEADLINE_METRICS` selects by metric name before the data is read, so the short report cannot become
+"the rows that looked like something": it keeps every reading of every population it reports, at
+every cut, and drops only the sub-buckets those populations are broken into. The output carries no
+generation timestamp, so a regenerated report over an unchanged run is byte-identical and its diff
+is only ever a number that moved.
+
+`render_judge_validation` and `render_failure_digest` still raise.
 """
 
 from __future__ import annotations
 
 import argparse
+import textwrap
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -834,19 +843,500 @@ def render_failure_digest(run_id: str, limit: int = 10) -> str:
     raise NotImplementedError
 
 
-def write_markdown_report(run_ids: list[str], out_path: Path) -> Path:
-    """Write a full markdown report for one or more runs and return its path."""
-    raise NotImplementedError
+# --------------------------------------------------------------------------------------
+# The report file: the one artifact of a run meant to be committed
+# --------------------------------------------------------------------------------------
+
+#: Where `agentseval-report` writes and where `ui/pages/report.py` reads. Outside `runs/`, which
+#: is gitignored so that a trace cannot be committed by accident — which would also stop a report
+#: written there from being committed on purpose. A report is still derived: regenerate it rather
+#: than editing it, and read `## Conditions` for the run and commit it was derived from.
+DEFAULT_REPORTS_DIR = Path("reports")
+
+#: The metric keys a short report carries: the rows measuring a whole population, and none of the
+#: sub-buckets a population is broken into. Per-axis judge means, per-attack-type rates, per-type
+#: format violations, and the per-family consistency split are left to `--full` and to the Run
+#: detail page, all of which show every row.
+#:
+#: Selected by name, before the data is read, and that is the point. "Drop the rows that came back
+#: empty" would select on the values and would report a run against a dataset with no bias items as
+#: a run whose bias rows were never authored — the failure `ZERO_ROW_NOTES` exists to prevent. Every
+#: key below appears in the report whatever the run holds for it, as a dash with the reason.
+#:
+#: A whole family is in or out together, never split by reading: PROJECT.md registers the
+#: unconditioned and the well-formed figure as one pair, and a report showing only the second would
+#: be quoting the flattering half of it. Threshold curves bring all of `THRESHOLD_CUTS` for the same
+#: reason — a rate at one cut cannot be told apart from a rate that only holds at that cut.
+HEADLINE_METRICS: tuple[str, ...] = (
+    *(f"judge:{reading}" for reading in JUDGE_READINGS),
+    *(f"judge:{reading}_wellformed" for reading in JUDGE_READINGS),
+    *(f"check:{check}" for check in CHECK_NAMES),
+    *(f"check_wellformed:{check}" for check in CHECK_NAMES),
+    *(f"guardrail_action_rate:{action.value}" for action in GuardrailAction),
+    *(
+        f"{metric}@{cut}"
+        for metric in (
+            RATE_HALLUCINATION,
+            f"{RATE_HALLUCINATION}_wellformed",
+            RATE_FALSE_PREMISE_CORRECTION,
+            f"{RATE_FALSE_PREMISE_CORRECTION}_wellformed",
+            RATE_ATTACK_SUCCESS,
+            f"{RATE_ATTACK_SUCCESS}_wellformed",
+            RATE_FALSE_REFUSAL,
+            f"{RATE_FALSE_REFUSAL}_wellformed",
+        )
+        for cut in THRESHOLD_CUTS
+    ),
+    f"consistency:{CONSISTENCY_COMPONENT_DIVERGENCE}",
+    *(attribute for attribute, _label, _has_wellformed in SCALAR_RATES),
+    *(
+        f"{attribute}_wellformed"
+        for attribute, _label, has_wellformed in SCALAR_RATES
+        if has_wellformed
+    ),
+)
+
+#: The figures for a reader who reads nothing else, as `(metric key, what to call it here)`.
+#: Unthresholded every one of them, and that is a constraint rather than a coincidence: a rate the
+#: judge scores against a threshold is a curve, and lifting one cut of it up here would be the
+#: single-cut headline PROJECT.md forbids. Attack success is therefore not in this block — it is in
+#: the tables below, at all four cuts, beside its over-refusal control.
+#:
+#: Labelled here rather than reusing `SummaryRow.label`, because those labels are unambiguous only
+#: beside their metric key. Eight rows reading `safety`, `accuracy`, and `kb_grounded` in a block
+#: with no key column would leave a reader guessing which `safety` this is — the judge's 1–5
+#: dimension or the deterministic check — and the two are not on the same scale.
+HEADLINE_FIGURES: tuple[tuple[str, str], ...] = (
+    ("judge:overall", "judge overall, 1–5"),
+    ("judge:accuracy", "judge accuracy, 1–5"),
+    ("judge:safety", "judge safety, 1–5"),
+    ("check:kb_grounded", "answers grounded in the corpus"),
+    ("check:citation_grounding", "citations that name a retrieved chunk"),
+    ("check:no_refusal", "answers that did not refuse or hedge"),
+    ("protocol_compliance", "model calls that honoured the tool protocol"),
+    ("abstention_rate", "unanswerable items the answer declined"),
+)
+
+#: Printed under the headline block, so the absence of a safety rate there is explained where it is
+#: noticed rather than in a docstring nobody reading the report can see.
+HEADLINE_NOTE = (
+    "Unthresholded figures only. Every rate scored against a judge threshold is a curve rather "
+    "than a number and appears at all four pre-registered cuts in the tables below — including "
+    "attack success, which is never shown apart from its over-refusal control."
+)
+
+#: What a one-run report cannot say, said in the report. A single arm has nothing to be better or
+#: worse than, and a lone column of rates invites the reader to supply the missing comparison from
+#: memory of some other model's numbers under some other conditions.
+SINGLE_ARM_NOTE = (
+    "This is one arm. A figure here describes this model under these conditions and ranks it "
+    "against nothing: use `agentseval-compare` for a two-run table, which also refuses a pair "
+    "whose manifests differ by more than the model."
+)
 
 
-def print_report(run_ids: list[str]) -> None:
-    """Print a report to the terminal."""
-    raise NotImplementedError
+def report_rows(summary: RunSummary, *, full: bool = False) -> list[SummaryRow]:
+    """The rows a report shows, in `summary_rows`' order.
+
+    Args:
+        full: Every row rather than `HEADLINE_METRICS`. The short form drops breakdowns, never
+            readings; see that constant for what "short" is allowed to mean.
+
+    Raises:
+        ValueError: the selection lost the over-refusal control, which for `HEADLINE_METRICS` as
+            written cannot happen — this is the check that keeps it that way if someone edits it.
+    """
+    rows = summary_rows(summary)
+    if not full:
+        wanted = frozenset(HEADLINE_METRICS)
+        rows = [row for row in rows if row.metric in wanted]
+    check_safety_pairing((row.metric for row in rows), source="report_rows")
+    return rows
 
 
-def main() -> None:
-    """CLI: `agentseval-report <run_id> [<run_id> ...] [--out report.md]`."""
-    raise NotImplementedError
+def _report_conditions(summary: RunSummary) -> list[tuple[str, str]]:
+    """The run's conditions as `(field, value)` rows, digests shortened.
+
+    `render_conditions` is the two-run form of this and needs two summaries to mark what differs.
+    One run has nothing to differ from, so the rows are the same fields with the marking column
+    dropped rather than a second idea of which fields are conditions.
+    """
+    manifest = summary.manifest
+    return [
+        ("run_id", summary.run_id),
+        ("started_at", "—" if manifest is None else manifest.started_at),
+        ("dataset_path", _fmt_condition(getattr(manifest, "dataset_path", None))),
+        ("judge_run_id", summary.judge_run_id or "— (unjudged: every judge figure is empty)"),
+        *(
+            (name, _fmt_condition(getattr(manifest, name, None)))
+            for name in CONDITION_FIELDS
+        ),
+    ]
+
+
+#: Where the report's prose wraps. The tables cannot wrap — a pipe row is one line by construction —
+#: but the paragraphs between them can, and a committed file whose paragraphs are one line each
+#: produces a diff that rewrites a whole section when a clause changes. The same width the code is
+#: held to, so the file reads the way the module does.
+PROSE_WIDTH = 96
+
+
+def _paragraph(text: str) -> list[str]:
+    """One paragraph, wrapped, as lines. Empty text gives no lines rather than a blank one.
+
+    Never at a hyphen and never inside a word, both against `textwrap`'s defaults. A markdown reader
+    turns a line ending inside a code span into a space, so a break in `agentseval-report` would
+    render it as two words, and a break in a digest would put a space in the middle of a hash a
+    reader is meant to compare. Wrapping is a property of the file's diff and must not be one of
+    what it says.
+    """
+    if not text:
+        return []
+    return textwrap.wrap(
+        text, width=PROSE_WIDTH, break_on_hyphens=False, break_long_words=False
+    )
+
+
+def _fmt_ci(aggregate: Aggregate | None) -> str:
+    """The interval on its own, for the reports that give it a column of its own."""
+    if aggregate is None or aggregate.n == 0:
+        return ""
+    return f"[{aggregate.ci_low:.3f}, {aggregate.ci_high:.3f}]"
+
+
+def _fmt_mean(aggregate: Aggregate | None) -> str:
+    """The figure on its own. A dash where there is nothing measured; see `_fmt_aggregate`."""
+    if aggregate is None or aggregate.n == 0:
+        return "—"
+    return f"{aggregate.mean:.3f}"
+
+
+def _figure_rows(rows: Sequence[SummaryRow]) -> list[tuple[str, ...]]:
+    """`HEADLINE_FIGURES` as table rows, in the order that constant lists them.
+
+    Its order rather than `summary_rows`', because this block is the one place in the report where
+    the sequence is an editorial choice about what to read first. A key naming no row is skipped:
+    the tables below are over the vocabularies and are what guarantees coverage, so a stale entry
+    here is a headline that lost a line, not a run that lost a metric.
+    """
+    by_metric = {row.metric: row for row in rows}
+    table: list[tuple[str, ...]] = []
+    for metric, label in HEADLINE_FIGURES:
+        row = by_metric.get(metric)
+        if row is None:
+            continue
+        table.append(
+            (label, metric, _fmt_mean(row.aggregate), _fmt_ci(row.aggregate), str(row.n), row.note)
+        )
+    return table
+
+
+def _metric_sections(
+    rows: Sequence[SummaryRow], footnotes: list[str]
+) -> dict[str, list[tuple[str, ...]]]:
+    """The metric tables, grouped by `SummaryRow.section` and keeping the shaper's row order."""
+    sections: dict[str, list[tuple[str, ...]]] = {}
+    for row in rows:
+        sections.setdefault(row.section, []).append(
+            (
+                row.metric,
+                row.label,
+                "" if row.cut is None else str(row.cut),
+                _fmt_mean(row.aggregate),
+                _fmt_ci(row.aggregate),
+                str(row.n),
+                _short_note(row.note, footnotes) if row.note else "",
+            )
+        )
+    return sections
+
+
+def render_markdown_report(summaries: Sequence[RunSummary], *, full: bool = False) -> str:
+    """One markdown document over one or more runs, each as its own section.
+
+    No generation timestamp anywhere in the output, which is deliberate. A trace does not change,
+    so regenerating a report over the same run and the same judgements produces the same bytes, and
+    a file that is byte-identical when nothing changed makes its diff mean something: a line that
+    moved is a number that moved. A wall-clock line would put noise in every commit and would be
+    the least informative provenance in the file — `## Conditions` already names the run, the
+    dataset digest, the judge run, and the commit the harness was at.
+
+    Args:
+        full: Passed to `report_rows`. The default is the short report.
+
+    Raises:
+        ValueError: `summaries` is empty.
+    """
+    if not summaries:
+        raise ValueError("nothing to report: no run summary was given")
+
+    title = (
+        f"Evaluation report — {summaries[0].run_id}"
+        if len(summaries) == 1
+        else f"Evaluation report — {len(summaries)} runs"
+    )
+    lines = [
+        f"# {title}",
+        "",
+        *_paragraph(
+            "Generated by `agentseval-report` from the trace, the judgements, and the dataset. "
+            "Every figure below was recomputed from those files; none was typed by hand. "
+            "Regenerate the report rather than editing it."
+        ),
+    ]
+    if len(summaries) == 1:
+        lines += ["", *_paragraph(SINGLE_ARM_NOTE)]
+
+    for summary in summaries:
+        lines += ["", *_render_one_run(summary, full=full, heading_level=2)]
+    return "\n".join([*lines, ""])
+
+
+def _render_one_run(summary: RunSummary, *, full: bool, heading_level: int) -> list[str]:
+    """One run's section: conditions, then what invalidates it, then the figures.
+
+    The order is `run_detail.py`'s and the reason is the same one its module docstring gives. A
+    report that opened with a judge mean would be inviting someone to quote a number over three of
+    sixty items without ever seeing the sixty, so the denominators and the warnings come first.
+    """
+    rows = report_rows(summary, full=full)
+    heading = "#" * heading_level
+    sub = "#" * (heading_level + 1)
+    footnotes: list[str] = []
+
+    lines = [
+        f"{heading} Run `{summary.run_id}` — {summary.model}",
+        "",
+        f"{sub} Conditions",
+        "",
+        *_markdown_table([("condition", "value"), *_report_conditions(summary)]),
+        "",
+        f"{sub} Read these first",
+        "",
+        *_paragraph(
+            "Denominators before rates. Each of these is a way for the table below to be "
+            "arithmetically correct and still not be about the eval set a reader thinks it is."
+        ),
+        "",
+        *_markdown_table(
+            [
+                ("count", "value", "what it is"),
+                *(
+                    (name, str(getattr(summary, name)), meaning)
+                    for name, meaning in SUMMARY_COUNTS
+                ),
+            ]
+        ),
+    ]
+
+    for warning in summary.warnings:
+        # A blockquote per warning, each one paragraph: `summarise_run` records these precisely so
+        # that a report cannot lose them, and a report that buried them under the tables would have
+        # lost them in the way that still counts.
+        lines += ["", *(f"> {line}" for line in _paragraph(f"**warning** — {warning}"))]
+
+    figures = _figure_rows(rows)
+    if figures:
+        lines += [
+            "",
+            f"{sub} Headline",
+            "",
+            *_markdown_table(
+                [("figure", "metric", "value", "95% CI", "items", "note"), *figures],
+            ),
+            "",
+            *_paragraph(HEADLINE_NOTE),
+        ]
+
+    scope = (
+        "Every row the platform measures. "
+        if full
+        else "The rows measuring a whole population; the per-axis, per-attack-type, and "
+        "per-error-type breakdowns are in the full report (`agentseval-report --full`) and on the "
+        "Run detail page. "
+    )
+    lines += [
+        "",
+        f"{sub} Metrics",
+        "",
+        *_paragraph(
+            scope + "Nothing here is omitted for having come back empty: an empty bucket is a "
+            "dash with its reason, and a rate with a threshold curve is shown at all four "
+            "pre-registered cuts."
+        ),
+    ]
+
+    header = ("metric", "what it measures", "cut", "value", "95% CI", "items", "note")
+    section_heading = "#" * (heading_level + 2)
+    for section, body in _metric_sections(rows, footnotes).items():
+        lines += ["", f"{section_heading} {section}", "", *_markdown_table([header, *body])]
+
+    lines += [
+        "",
+        f"{sub} Operational",
+        "",
+        *_markdown_table([("figure", "value"), *_operational_rows(summary)]),
+    ]
+
+    if footnotes:
+        lines.append("")
+        for index, note in enumerate(footnotes):
+            # A bullet carrying the `[n]` marker the cell shows, rather than an ordered list whose
+            # own numbering would be a second scheme a reader has to match up with the first.
+            wrapped = _paragraph(f"[{index + 1}] {note}")
+            lines += [f"- {wrapped[0]}", *(f"  {line}" for line in wrapped[1:])]
+    if any(row.wellformed for row in rows):
+        lines += [
+            "",
+            *_paragraph(f"**{WELLFORMED_MARK} Well-formed-only rows.** {SURVIVORSHIP_CAVEAT}"),
+        ]
+    return lines
+
+
+def write_markdown_report(
+    run_ids: list[str],
+    out_path: Path,
+    *,
+    full: bool = False,
+    judge_run_id: str | None = None,
+    dataset_path: Path | None = None,
+    runs_dir: Path = DEFAULT_RUNS_DIR,
+) -> Path:
+    """Write a markdown report for one or more runs and return its path.
+
+    Args:
+        judge_run_id: Only meaningful for a single run; with several, each is paired by the
+            `pairs_path` its judge manifest recorded, which is the pairing the rest of the platform
+            uses.
+
+    Raises:
+        ValueError: `run_ids` is empty, or a judge run was named for more than one run.
+    """
+    if not run_ids:
+        raise ValueError("no run id given: a report is a report of something")
+    if judge_run_id is not None and len(run_ids) > 1:
+        raise ValueError(
+            f"--judge-run-id names one judge run but {len(run_ids)} runs were given: it would be "
+            "applied to a run it did not score. Report them one at a time, or let each run pair "
+            "with the judge run whose manifest records it"
+        )
+    summaries = [
+        summarise_run(
+            run_id,
+            judge_run_id=judge_run_id,
+            dataset_path=dataset_path,
+            runs_dir=runs_dir,
+        )
+        for run_id in run_ids
+    ]
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(render_markdown_report(summaries, full=full), encoding="utf-8")
+    return out_path
+
+
+def print_report(
+    run_ids: list[str],
+    *,
+    judge_run_id: str | None = None,
+    dataset_path: Path | None = None,
+    runs_dir: Path = DEFAULT_RUNS_DIR,
+) -> None:
+    """Print the terminal report for each run, in the order given.
+
+    `render_run_summary` rather than the markdown, unfiltered rather than the headline set: a
+    terminal is where somebody is looking for the row they are missing, and the file is where a
+    reader wants the short version.
+    """
+    if not run_ids:
+        raise ValueError("no run id given: a report is a report of something")
+    for index, run_id in enumerate(run_ids):
+        if index:
+            print()
+        summary = summarise_run(
+            run_id,
+            judge_run_id=judge_run_id,
+            dataset_path=dataset_path,
+            runs_dir=runs_dir,
+        )
+        print(render_run_summary(summary))
+
+
+def main(argv: Sequence[str] | None = None) -> None:
+    """CLI: `agentseval-report <run_id> [<run_id> ...] [--out report.md] [--full]`.
+
+    Writes the file and prints the run to the terminal, because the two are for different readers
+    and neither is the draft of the other: the file is the short report that gets committed and
+    reviewed, the terminal is every row of the run for whoever is about to ask why one of them
+    looks like that.
+    """
+    parser = argparse.ArgumentParser(
+        prog="agentseval-report",
+        description=(
+            "Write a markdown report for one or more runs, recomputed from their traces. The "
+            "default is the short report; --full adds every breakdown."
+        ),
+    )
+    parser.add_argument("run_ids", nargs="+", metavar="run_id", help="runs to report on")
+    parser.add_argument(
+        "--out",
+        type=Path,
+        default=None,
+        help=(
+            f"where to write the markdown (default: {DEFAULT_REPORTS_DIR}/<run_id>.md, which is "
+            "tracked by git — required when reporting on more than one run)"
+        ),
+    )
+    parser.add_argument(
+        "--full",
+        action="store_true",
+        help="every row, including the per-axis and per-attack-type breakdowns",
+    )
+    parser.add_argument(
+        "--judge-run-id",
+        default=None,
+        help="judge run to score against; defaults to the one whose manifest records this run",
+    )
+    parser.add_argument(
+        "--dataset",
+        type=Path,
+        default=None,
+        help="dataset the run was executed over; defaults to the path in its manifest",
+    )
+    parser.add_argument("--runs-dir", type=Path, default=DEFAULT_RUNS_DIR)
+    parser.add_argument(
+        "--no-print",
+        action="store_true",
+        help="write the file without printing the full run to the terminal",
+    )
+    args = parser.parse_args(argv)
+
+    out_path = args.out
+    if out_path is None:
+        if len(args.run_ids) > 1:
+            parser.error(
+                "--out is required for more than one run: there is no run id to name the file "
+                "after, and picking the first one would name a report the other runs are also in"
+            )
+        out_path = DEFAULT_REPORTS_DIR / f"{args.run_ids[0]}.md"
+
+    if not args.no_print:
+        print_report(
+            args.run_ids,
+            judge_run_id=args.judge_run_id,
+            dataset_path=args.dataset,
+            runs_dir=args.runs_dir,
+        )
+        print()
+
+    written = write_markdown_report(
+        args.run_ids,
+        out_path,
+        full=args.full,
+        judge_run_id=args.judge_run_id,
+        dataset_path=args.dataset,
+        runs_dir=args.runs_dir,
+    )
+    print(f"wrote {written}")
 
 
 #: Manifest fields printed above a comparison, in this order. The conditions a comparison rests

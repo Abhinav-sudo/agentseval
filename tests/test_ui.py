@@ -53,6 +53,7 @@ from tests.runs import (  # noqa: E402
     write_trace,
 )
 from ui.data import (  # noqa: E402
+    DEFAULT_REPORTS_ROOT,
     RunRef,
     _mtime_ns,
     chat_runs,
@@ -68,6 +69,7 @@ BROWSE = REPO_ROOT / "ui" / "pages" / "browse_runs.py"
 DETAIL = REPO_ROOT / "ui" / "pages" / "run_detail.py"
 HISTORY = REPO_ROOT / "ui" / "pages" / "chat_history.py"
 JUDGEMENTS = REPO_ROOT / "ui" / "pages" / "judgements.py"
+REPORT = REPO_ROOT / "ui" / "pages" / "report.py"
 
 #: Deliberately unlike the run it scores. `find_judge_run` reads the judge manifest's `pairs_path`,
 #: and a name this unrelated is what makes that visible rather than assumed.
@@ -1009,12 +1011,93 @@ def test_the_history_page_shows_no_annotator_fields_or_dataset_text(
 
 
 # --------------------------------------------------------------------------------------
+# The report page: the one view that shows a file rather than recomputing
+# --------------------------------------------------------------------------------------
+
+
+def committed_report(tmp_path: Path, name: str = "run-f.md", body: str = "") -> Path:
+    """A report where `agentseval-report` writes, as if it had been committed."""
+    directory = tmp_path / DEFAULT_REPORTS_ROOT
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / name
+    path.write_text(body or f"# Evaluation report — {name}\n\n| metric | value |\n", "utf-8")
+    return path
+
+
+def test_the_report_page_renders_the_committed_markdown(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    committed_report(tmp_path, body="# Evaluation report — run-f\n\nattack_success_rate@3 0.075\n")
+    monkeypatch.chdir(tmp_path)
+
+    at = page(REPORT)
+
+    assert not at.exception
+    text = rendered_text(at)
+    assert "attack_success_rate@3 0.075" in text
+    assert "run-f.md" in text, "the filename of what is being read is on the page"
+
+
+def test_the_report_page_says_a_report_is_a_snapshot(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """It is the one page here that can be out of date, so it is the one page that must say so."""
+    committed_report(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    text = rendered_text(page(REPORT))
+
+    assert "snapshot" in text
+    assert "Run detail" in text
+
+
+def test_an_empty_reports_directory_names_the_command_that_fills_it(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    at = page(REPORT)
+
+    assert not at.exception
+    assert any("agentseval-report" in warning.value for warning in at.warning)
+
+
+def test_the_report_page_offers_every_report_it_found(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    committed_report(tmp_path, "run-f.md")
+    committed_report(tmp_path, "run-g.md")
+    monkeypatch.chdir(tmp_path)
+
+    at = page(REPORT)
+
+    assert not at.exception
+    assert [Path(option).name for option in at.selectbox[0].options] == ["run-f.md", "run-g.md"]
+
+
+def test_a_regenerated_report_is_read_again_rather_than_served_from_cache(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A page showing last hour's numbers under this hour's filename is the failure to avoid."""
+    path = committed_report(tmp_path, body="# Report\n\nfirst pass\n")
+    monkeypatch.chdir(tmp_path)
+    assert "first pass" in rendered_text(page(REPORT))
+
+    path.write_text("# Report\n\nsecond pass\n", encoding="utf-8")
+    _touch_later(path)
+
+    text = rendered_text(page(REPORT))
+    assert "second pass" in text
+    assert "first pass" not in text
+
+
+# --------------------------------------------------------------------------------------
 # Reading is not writing
 # --------------------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
-    "path", [DASHBOARD, BROWSE, DETAIL, HISTORY, JUDGEMENTS], ids=lambda p: p.stem
+    "path", [DASHBOARD, BROWSE, DETAIL, HISTORY, JUDGEMENTS, REPORT], ids=lambda p: p.stem
 )
 def test_rendering_a_page_writes_nothing(
     path: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -1022,6 +1105,7 @@ def test_rendering_a_page_writes_nothing(
     """No derived results file: a second copy of a run is a second thing to keep truthful."""
     probe_run(tmp_path)
     chat_session_on_disk(tmp_path)
+    committed_report(tmp_path)
     monkeypatch.chdir(tmp_path)
     before = file_set(tmp_path)
 

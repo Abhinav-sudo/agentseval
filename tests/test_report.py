@@ -19,6 +19,15 @@ same metric something else.
 `compare_main` is tested through a stubbed `summarise_run`: the guards it selects are covered in
 `test_metrics.py`, and what belongs here is the wiring — the contrast reaching `compare_runs`, the
 conditions block, and the markdown file.
+
+The report file gets the same treatment as the tables, one level up. It is the only form in which a
+result leaves this repository, so what is tested is what it is allowed to leave out: `report_rows`
+may drop a breakdown and may never drop a reading or a cut, the headline block may quote no
+thresholded figure at all, and a selection that lost the over-refusal control is refused where the
+tables refuse it. The document itself is asked to state its conditions, to put the denominators
+above the first rate, to carry the warnings `summarise_run` recorded, and to hold no timestamp — so
+that regenerating it over an unchanged run produces the same bytes and its diff is only ever a
+number that moved.
 """
 
 from __future__ import annotations
@@ -56,6 +65,7 @@ from evals.metrics import (
     wilson_ci,
 )
 from evals.report import (
+    HEADLINE_METRICS,
     JUDGE_READINGS,
     MAX_NOTE_CHARS,
     SCALAR_RATES,
@@ -65,7 +75,9 @@ from evals.report import (
     compare_main,
     render_comparison,
     render_conditions,
+    render_markdown_report,
     render_run_summary,
+    report_rows,
     summary_rows,
 )
 from evals.schema import BIAS_SUBCATEGORIES, AttackType, Axis
@@ -758,11 +770,239 @@ def test_warnings_recorded_on_the_summary_are_rendered() -> None:
     assert "truncation above the pre-registered threshold" in render_run_summary(run)
 
 
-def test_the_report_files_are_still_stubs() -> None:
-    """Out of scope for this phase, and a stub that quietly returned nothing would hide that."""
+def test_the_remaining_report_pieces_are_still_stubs() -> None:
+    """Out of scope, and a stub that quietly returned nothing would hide that."""
     with pytest.raises(NotImplementedError):
-        report.write_markdown_report(["run-a"], Path("report.md"))
+        report.render_judge_validation(None)  # type: ignore[arg-type]
     with pytest.raises(NotImplementedError):
-        report.print_report(["run-a"])
-    with pytest.raises(NotImplementedError):
-        report.main()
+        report.render_failure_digest("run-a")
+
+
+# --------------------------------------------------------------------------------------
+# The report file: what the short form is allowed to leave out
+# --------------------------------------------------------------------------------------
+
+
+def test_every_headline_metric_names_a_row_the_shaper_emits() -> None:
+    """A key naming no row is a line the report lost, and nothing else would say so."""
+    emitted = set(metrics_of(judged_summary()))
+
+    for metric in HEADLINE_METRICS:
+        assert metric in emitted, f"{metric} is in HEADLINE_METRICS and not in summary_rows"
+
+
+def test_the_short_report_drops_breakdowns_and_never_a_reading() -> None:
+    """The one thing "short" is allowed to mean. See `HEADLINE_METRICS`."""
+    kept = {row.metric for row in report_rows(judged_summary())}
+
+    for metric in kept:
+        if metric.endswith("_wellformed") or "_wellformed@" in metric:
+            continue
+        pair = metric.replace("@", "_wellformed@") if "@" in metric else f"{metric}_wellformed"
+        if pair in metrics_of(judged_summary()):
+            assert pair in kept, f"{metric} is reported and its well-formed reading is not"
+    # And the sub-buckets are what went, so the report is actually shorter than the full one.
+    assert f"{RATE_ATTACK_SUCCESS}:{AttackType.DIRECT.value}@3" not in kept
+    assert f"axis:{Axis.SAFETY.value}:overall" not in kept
+
+
+def test_a_thresholded_rate_is_in_the_short_report_at_all_four_cuts() -> None:
+    """A rate at one cut cannot be told apart from a rate that only holds at that cut."""
+    kept = {row.metric for row in report_rows(judged_summary())}
+
+    for cut in THRESHOLD_CUTS:
+        assert f"{RATE_ATTACK_SUCCESS}@{cut}" in kept
+        assert f"{RATE_FALSE_REFUSAL}@{cut}" in kept
+
+
+def test_the_headline_block_quotes_no_thresholded_figure() -> None:
+    """Lifting one cut into the headline is the single-cut figure PROJECT.md forbids."""
+    curves = {RATE_HALLUCINATION, RATE_ATTACK_SUCCESS, RATE_FALSE_REFUSAL}
+
+    for metric, _label in report.HEADLINE_FIGURES:
+        assert "@" not in metric
+        assert metric not in curves
+
+
+def test_a_headline_selection_that_lost_the_control_is_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The pairing rule applied to the selection, for whoever edits `HEADLINE_METRICS` next."""
+    monkeypatch.setattr(
+        report,
+        "HEADLINE_METRICS",
+        tuple(m for m in HEADLINE_METRICS if not m.startswith(RATE_FALSE_REFUSAL)),
+    )
+
+    with pytest.raises(ValueError, match="over-refusal cost"):
+        report_rows(judged_summary())
+
+
+def test_the_full_report_carries_the_breakdowns_the_short_one_dropped() -> None:
+    short = {row.metric for row in report_rows(judged_summary())}
+    full = {row.metric for row in report_rows(judged_summary(), full=True)}
+
+    assert short < full
+    assert full == set(metrics_of(judged_summary()))
+
+
+# --------------------------------------------------------------------------------------
+# The markdown document
+# --------------------------------------------------------------------------------------
+
+
+def test_the_report_states_the_conditions_it_was_produced_under() -> None:
+    """A score printed without its manifest invites comparison against other conditions."""
+    rendered = render_markdown_report([judged_summary("run-a")])
+
+    assert "# Evaluation report — run-a" in rendered
+    assert "evals/datasets/safety.jsonl" in rendered
+    assert sha256_text("dataset v1")[:12] in rendered
+    assert "a" * 40 in rendered, "the commit the harness was at"
+    assert "judge-run-a" in rendered
+
+
+def test_the_report_says_what_one_arm_cannot_say() -> None:
+    """A lone column of rates invites the reader to supply the comparison from memory."""
+    rendered = render_markdown_report([judged_summary()])
+
+    assert "This is one arm" in rendered
+    assert "agentseval-compare" in rendered
+
+
+def test_the_denominators_come_before_the_first_rate() -> None:
+    """A judge mean over three of sixty items is not a small version of the same finding."""
+    rendered = render_markdown_report([judged_summary()])
+
+    assert rendered.index("n_scored") < rendered.index("### Headline")
+    assert rendered.index("### Read these first") < rendered.index("### Metrics")
+
+
+def test_the_report_carries_the_warnings_the_summary_recorded() -> None:
+    run = replace(judged_summary(), warnings=["truncation above the pre-registered threshold"])
+
+    rendered = render_markdown_report([run])
+
+    assert "> **warning** — truncation above the pre-registered threshold" in rendered
+
+
+def test_an_empty_bucket_is_a_dash_with_its_reason_and_not_a_missing_row() -> None:
+    rendered = render_markdown_report([summary("run-empty")])
+
+    assert f"| {RATE_ATTACK_SUCCESS}@3 |" in rendered
+    assert "no items" in rendered
+
+
+def test_a_registered_zero_row_note_becomes_a_footnote_rather_than_a_cell(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A three-line note left in a cell sets the column width for every other row."""
+    long_note = "x" * (MAX_NOTE_CHARS + 10)
+    monkeypatch.setitem(ZERO_ROW_NOTES, RATE_ATTACK_SUCCESS, long_note)
+
+    rendered = render_markdown_report([summary("run-empty")])
+
+    assert "| [1] |" in rendered
+    assert f"- [1] no items — {long_note}" in rendered
+
+
+def test_wrapping_never_breaks_a_name_a_reader_has_to_read() -> None:
+    """A markdown reader turns a line ending inside a code span into a space."""
+    rendered = render_markdown_report([judged_summary()])
+
+    assert not [line for line in rendered.splitlines() if line.endswith("-")]
+    # And the whole of a hyphenated name is on one line, not merely unbroken at the margin.
+    assert any("`agentseval-compare`" in line for line in rendered.splitlines())
+
+
+def test_the_report_carries_no_timestamp_so_an_unchanged_run_regenerates_identically() -> None:
+    """A file that is byte-identical when nothing changed makes its diff mean something."""
+    first = render_markdown_report([judged_summary()])
+    second = render_markdown_report([judged_summary()])
+
+    assert first == second
+
+
+def test_a_report_over_no_run_is_refused() -> None:
+    with pytest.raises(ValueError, match="nothing to report"):
+        render_markdown_report([])
+
+
+def test_two_runs_get_a_section_each_under_one_title() -> None:
+    rendered = render_markdown_report([judged_summary("run-a"), judged_summary("run-b")])
+
+    assert "# Evaluation report — 2 runs" in rendered
+    assert "## Run `run-a`" in rendered
+    assert "## Run `run-b`" in rendered
+    assert "This is one arm" not in rendered
+
+
+# --------------------------------------------------------------------------------------
+# agentseval-report
+# --------------------------------------------------------------------------------------
+
+
+@pytest.fixture
+def stub_report_runs(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Two summaries `agentseval-report` will find, standing in for two traces on disk."""
+    runs = {"run-a": judged_summary("run-a"), "run-b": judged_summary("run-b")}
+    monkeypatch.setattr(report, "summarise_run", lambda run_id, **_kwargs: runs[run_id])
+
+
+def test_the_cli_writes_to_a_tracked_path_named_after_the_run(
+    stub_report_runs: None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The default is a committable path, because being committable is the point of the file."""
+    monkeypatch.chdir(tmp_path)
+
+    report.main(["run-a", "--no-print"])
+
+    written = tmp_path / report.DEFAULT_REPORTS_DIR / "run-a.md"
+    assert written.read_text(encoding="utf-8").startswith("# Evaluation report — run-a")
+
+
+def test_the_cli_prints_every_row_while_the_file_keeps_the_short_form(
+    stub_report_runs: None, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Two readers: the terminal is for whoever is about to ask about one row."""
+    out = tmp_path / "nested" / "run-a.md"
+
+    report.main(["run-a", "--out", str(out)])
+
+    printed = capsys.readouterr().out
+    breakdown = f"{RATE_ATTACK_SUCCESS}:{AttackType.DIRECT.value}@3"
+    assert breakdown in printed
+    assert breakdown not in out.read_text(encoding="utf-8")
+    assert str(out) in printed
+
+
+def test_the_cli_writes_every_row_when_asked_for_the_full_report(
+    stub_report_runs: None, tmp_path: Path
+) -> None:
+    out = tmp_path / "full.md"
+
+    report.main(["run-a", "--full", "--no-print", "--out", str(out)])
+
+    assert f"{RATE_ATTACK_SUCCESS}:{AttackType.DIRECT.value}@3" in out.read_text(encoding="utf-8")
+
+
+def test_the_cli_refuses_to_name_a_multi_run_file_after_one_of_them(
+    stub_report_runs: None,
+) -> None:
+    with pytest.raises(SystemExit):
+        report.main(["run-a", "run-b", "--no-print"])
+
+
+def test_a_judge_run_cannot_be_named_for_more_than_one_run(stub_report_runs: None) -> None:
+    """It would be applied to a run it did not score."""
+    with pytest.raises(ValueError, match="applied to a run it did not score"):
+        report.write_markdown_report(
+            ["run-a", "run-b"], Path("report.md"), judge_run_id="judge-run-a"
+        )
+
+
+def test_a_report_of_nothing_is_refused_by_both_entry_points() -> None:
+    with pytest.raises(ValueError, match="report of something"):
+        report.write_markdown_report([], Path("report.md"))
+    with pytest.raises(ValueError, match="report of something"):
+        report.print_report([])

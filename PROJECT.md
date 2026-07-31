@@ -884,9 +884,10 @@ ui/
   data.py              run discovery, judge pairing, cached summaries, per-item judgements,
                        chat transcripts
   pages/               one script per view: browse_runs.py, chat_history.py, judgements.py,
-                       run_detail.py
+                       report.py, run_detail.py
 kb/                    markdown corpus + .index.npz / .index.json (both gitignored)
 runs/                  {run_id}.jsonl + {run_id}.manifest.json (gitignored)
+reports/               markdown reports written by agentseval-report (tracked, unlike runs/)
 .cache/models/         cached provider responses (gitignored)
 app.py                 Streamlit chat surface (demo surface, not the deliverable)
 tests/
@@ -927,6 +928,14 @@ Four properties, each enforced rather than intended:
   a rate with a threshold curve is shown at all four cuts. These are pre-registered above
   and were previously enforced only by `report.render_comparison`; a second renderer that relaxed
   any of them would be a second answer.
+* **One page shows a file, and says so.** `pages/report.py` renders the markdown under `reports/`
+  rather than recomputing, because that is the point of a report: `runs/` is gitignored, so the
+  report is the only form in which a result reaches a reader who does not have these runs on their
+  disk — including a reader looking at this repository rather than running it. It is therefore also
+  the only page that can be out of date with a trace, and it names Run detail as the view that
+  recomputes. It parses no figure back out of the markdown: by then the numbers are text, and
+  re-deriving them from a worse copy of the data would be a second answer built from a worse source
+  than the trace it came from.
 * **A row carries data, not text.** `report.summary_rows` returns structured `SummaryRow`s and
   `report.render_run_summary` formats them, exactly as `metrics.compare_runs` returns
   `Comparison`s that `report.render_comparison` formats. Pre-formatted rows cannot be sorted,
@@ -956,10 +965,12 @@ dataset against an agent, and `metrics.py` for the aggregation — Wilson interv
 bootstrap intervals on every mean and counterfactual pair delta, the threshold curve at all four
 cuts, and a `compare_runs` that refuses two runs whose manifests disagree. `report.py` renders
 both a two-run comparison and a single run: `summary_rows` flattens a `RunSummary` into structured
-rows and `render_comparison` / `render_run_summary` format them. The report *files* are still
-stubs — `write_markdown_report`, `print_report`, and `agentseval-report` raise. `ui/` renders the
-same rows in a browser, read-only, and one page below them shows the judgements themselves —
-per item, with the rubric each was scored under and the rationale the judge wrote.
+rows and `render_comparison` / `render_run_summary` format them. `write_markdown_report`,
+`print_report`, and `agentseval-report` write the report file over those same rows — the short form
+by default, selected by metric name before the data is read, and every row with `--full`.
+`render_judge_validation` and `render_failure_digest` still raise. `ui/` renders the same rows in a
+browser, read-only; one page below them shows the judgements themselves — per item, with the rubric
+each was scored under and the rationale the judge wrote — and one shows the committed reports.
 
 `search_web` still raises `ToolInfraError` rather than `NotImplementedError` when the provider is
 unreachable or unconfigured: an outage is our gap, so the loop books it as infrastructure and

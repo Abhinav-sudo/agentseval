@@ -12,11 +12,17 @@ from pathlib import Path
 import streamlit as st
 
 from agent.manifest import RunManifest
-from ui.data import DEFAULT_RUNS_ROOT, RunRef, discover_runs
+from ui.data import DEFAULT_REPORTS_ROOT, DEFAULT_RUNS_ROOT, RunRef, discover_runs
 
 #: Session-state key behind the runs-root box, so the three pages share one value and switching
 #: page does not silently switch which runs are being read.
 RUNS_ROOT_KEY = "runs_root"
+
+#: The same for the reports box. A separate key rather than a subdirectory of the runs root, because
+#: the two directories are tracked on opposite terms: `runs/` is gitignored and `reports/` is not,
+#: and pointing the report page inside a runs directory would be pointing it at files git has been
+#: told to ignore.
+REPORTS_ROOT_KEY = "reports_root"
 
 #: Session-state key naming the run the detail page is showing. Shared so a test — or a later
 #: revision with a link from the table — can say which run to open without a URL scheme.
@@ -64,6 +70,23 @@ def runs_root() -> Path:
             help="Searched recursively, so runs in subdirectories such as runs/pilot/ are found.",
         )
     return Path(value or DEFAULT_RUNS_ROOT)
+
+
+def reports_root() -> Path:
+    """The directory the report page reads, from its own sidebar box.
+
+    A box for the same reason `runs_root` is one: `agentseval-report --out` can put a report
+    anywhere, so the default is where it writes when nobody says otherwise.
+    """
+    with st.sidebar:
+        st.header("Reports")
+        value = st.text_input(
+            "Reports directory",
+            value=str(DEFAULT_REPORTS_ROOT),
+            key=REPORTS_ROOT_KEY,
+            help="Where `agentseval-report` writes. Tracked by git, unlike `runs/`.",
+        )
+    return Path(value or DEFAULT_REPORTS_ROOT)
 
 
 def load_runs() -> tuple[list[RunRef], Path]:

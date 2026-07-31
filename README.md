@@ -88,11 +88,26 @@ agentseval-judge --input pairs.jsonl --out scores.jsonl
 agentseval-validate-judge --labelled pairs.jsonl --column-map human_score=rating
 ```
 
+**Write a report.** `runs/` is gitignored, so the markdown report is the only form in which a
+result leaves the repository. It is recomputed from the trace, the judgements, and the dataset, and
+carries no timestamp — regenerating it over an unchanged run produces the same bytes, so its diff is
+only ever a number that moved.
+
+```bash
+agentseval-report <run_id>              # writes reports/<run_id>.md and prints every row
+agentseval-report <run_id> --full       # the per-axis and per-attack-type breakdowns as well
+```
+
+The short form drops breakdowns and never a reading: rows are selected by metric name before the
+data is read, so it keeps both the unconditioned and the well-formed figure of everything it
+reports, every threshold cut of every curve, and attack success alongside its over-refusal control.
+[`reports/`](reports/) holds what has been committed.
+
 **Browse results and exercise the agent.** The dashboard reads files only — no model call, no
 key, no cost, nothing written.
 
 ```bash
-streamlit run ui/dashboard.py       # runs table, run detail, past chat transcripts
+streamlit run ui/dashboard.py       # runs table, run detail, reports, past chat transcripts
 streamlit run app.py                # chat demo
 ```
 
@@ -104,9 +119,8 @@ ruff check .
 ```
 
 The remaining CLIs are `agentseval-label` (collect human labels),
-`agentseval-calibrate-retrieval` (derive the retrieval floor),
-`agentseval-compose-fixture` (build the prompt-injection corpus), and `agentseval-report`
-(still a stub).
+`agentseval-calibrate-retrieval` (derive the retrieval floor), and
+`agentseval-compose-fixture` (build the prompt-injection corpus).
 
 ## Architecture
 
@@ -127,6 +141,7 @@ flowchart LR
   data[("evals/datasets/")]
   kb[("kb/<br/>MiniLM index")]
   runs[("runs/<br/>trace + manifest")]
+  reports[("reports/<br/>markdown, tracked")]
   ui["ui/ — read-only views"]
   app["app.py (demo)"]
 
@@ -137,6 +152,7 @@ flowchart LR
   runner --> runs
   judge --> runs
   runs --> metrics --> report --> ui
+  report --> reports --> ui
   data --> metrics
   app --> core
 ```
@@ -202,12 +218,18 @@ while being imported by neither.
 
 ## Limitations
 
-* **No graded run has been executed, so there are no results.** Everything needed to produce
-  the comparison is implemented and unit-tested; what remains is API credits and labelling
-  time.
-* **Report files are stubs.** `agentseval-report`, `write_markdown_report`, and
-  `print_report` raise `NotImplementedError`; a comparison can still be written with
-  `agentseval-compare --out`. `ui/` has no comparison or judge-validation page yet.
+* **No graded run has been executed, so there is no result.** The one report in
+  [`reports/`](reports/) is a real run of the frontier arm over the safety set, and it is not a
+  graded one on three counts, each of which the report states rather than leaves to be noticed: it
+  is a single arm, so every figure in it ranks the model against nothing; the judge that scored it
+  has not been through `agentseval-validate-judge`, because that needs human labels nobody has
+  written yet, so its means are unvalidated; and 11% of model calls hit our own `max_tokens`
+  ceiling, four times the pre-registered 2% threshold, which makes the run partly a measurement of
+  that ceiling. What remains for a graded comparison is API credits and labelling time.
+* **Two report renderers are stubs.** `render_judge_validation` and `render_failure_digest` raise
+  `NotImplementedError` — a report therefore states its judge run without the agreement figures
+  that say the judge's scores mean anything, and gives aggregates without the failing cases behind
+  them. `ui/` has no comparison or judge-validation page either.
 * **One annotator, so there is no inter-annotator agreement**, and the 1-5 and pass/fail label
   passes are not independent. `check_self_preference` is unimplemented for the same reason:
   it needs human labels on both arms.
@@ -222,9 +244,10 @@ while being imported by neither.
 
 ## Future improvements
 
-* Run the graded comparison end to end and publish the results table.
-* Implement the single-run report writer and the comparison and judge-validation pages in
-  `ui/`.
+* Run the graded comparison end to end and commit the results table beside the report.
+* Implement the judge-validation and failure-digest renderers, so a report carries the evidence
+  its judge means rest on and the cases behind its aggregates, and add the comparison and
+  judge-validation pages to `ui/`.
 * Add a second annotator, which would give inter-annotator agreement and remove the
   dependency between the two label passes.
 * Pin the retrieval stack (`torch`, `transformers`, `sentence-transformers`) rather than only
@@ -244,6 +267,7 @@ evals/        the platform: dataset schema and linter, labelling, runner, judge,
 ui/           read-only Streamlit views over runs/ — imports agent/ and evals/, imported by neither
 kb/           the markdown corpus and its gitignored index
 runs/         {run_id}.jsonl + {run_id}.manifest.json (gitignored)
+reports/      markdown reports from agentseval-report — tracked, unlike runs/
 app.py        Streamlit chat demo
 tests/
 ```

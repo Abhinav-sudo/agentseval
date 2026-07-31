@@ -62,7 +62,10 @@ def main() -> None:
         "nothing scored keeps its row, with blanks rather than zeros.\n"
         "- **Chat history** — a past conversation from the chat surface, read back out of its "
         "trace. One segment per run, since a conversation that crossed a model switch was "
-        "recorded under a manifest each."
+        "recorded under a manifest each.\n"
+        "- **Report** — the committed markdown reports. The only page that shows a file rather "
+        "than recomputing: `runs/` is not tracked by git, so a report is the form a result takes "
+        "for a reader who does not have these runs on their disk."
     )
 
     st.subheader("What is deliberately not here")

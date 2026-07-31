@@ -53,10 +53,16 @@ from evals.metrics import (
     load_item_results,
     summarise_run,
 )
+from evals.report import DEFAULT_REPORTS_DIR
 
 #: Where the pages look for runs unless told otherwise. The same default the CLIs use, so the
 #: browser lists what `agentseval-run` wrote without being pointed at it.
 DEFAULT_RUNS_ROOT: Path = DEFAULT_RUNS_DIR
+
+#: Where the report page looks, which is where `agentseval-report` writes. Unlike `runs/`, this
+#: directory is tracked by git: a report is the one artifact of a run meant to be committed, and it
+#: is the only form in which a result reaches anyone without this repository's runs on their disk.
+DEFAULT_REPORTS_ROOT: Path = DEFAULT_REPORTS_DIR
 
 #: The one `run_kind` these views can summarise. A chat session has no dataset to score against
 #: and a judge run has no agent under test; `metrics.load_run` refuses both, and it is right to.
@@ -376,6 +382,40 @@ def summary_for(run: RunRef) -> RunSummary:
         _mtime_ns(run.trace_path),
         _mtime_ns(run.judge_scores_path),
     )
+
+
+def discover_reports(root: Path = DEFAULT_REPORTS_ROOT) -> list[Path]:
+    """The markdown reports under `root`, sorted by name. Empty when there are none, or none yet.
+
+    Not recursive, and not a manifest walk. A report is a document rather than a run: it has no
+    conditions of its own to read, and the run whose conditions it carries is named inside it. So
+    there is nothing here for `discover_runs`' pairing logic to do, and a flat listing is the whole
+    of the discovery.
+    """
+    try:
+        return sorted(path for path in root.glob("*.md") if path.is_file())
+    except OSError:
+        return []
+
+
+@st.cache_data(show_spinner="Reading the report...")
+def _report_text(path: str, mtime_ns: int, size: int) -> str:
+    """One report's text, memoised on the file it read.
+
+    `mtime_ns` and `size` are cache key and nothing else, on the same terms as `_summarise`: not
+    read in the body, and not to be renamed with a leading underscore, or a regenerated report would
+    keep serving the previous one's numbers under the same filename.
+    """
+    return Path(path).read_text(encoding="utf-8")
+
+
+def report_text(path: Path) -> str:
+    """The markdown at `path`, from cache when the file has not changed since it was read.
+
+    Raises:
+        OSError: the file is not readable — deleted between the listing and the read, most likely.
+    """
+    return _report_text(str(path.resolve()), _mtime_ns(path), _size(path))
 
 
 @st.cache_data(show_spinner="Reading the judgements...")
